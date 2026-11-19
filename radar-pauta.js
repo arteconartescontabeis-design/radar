@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.123.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.124.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -331,11 +331,39 @@ async function telaSemana(){
       <button class="btn peq sec" type="button" data-acao="pauta-semana" data-passo="1">Próxima semana →</button>
       <b id="pauta-semana-titulo">Semana de ${seg.slice(8, 10)}/${seg.slice(5, 7)} a ${dom.slice(8, 10)}/${dom.slice(5, 7)}/${dom.slice(0, 4)}</b></div>
     <div class="pauta-semana">${Array.from({length:7}, (_, i) => cartao(somarDias(seg, i))).join("")}</div>
+    <div class="painel" id="pauta-ideias"><div class="acoes" style="margin:0"><button class="btn sec" type="button" data-acao="pauta-ideias-abrir">✨ Gerar novas pautas com IA</button></div>
+      <p class="sub" style="margin:4px 0 0">Preenche os próximos <b>dias úteis livres</b> com assuntos sugeridos pela IA (um por dia). Escolha quantos dias quer gerar — 1 para uma pauta só, ou vários de uma vez.${adm ? "" : " As sugestões aparecem para você conferir; só o administrador adiciona ao calendário."}</p>
+      ${E.pauta.ideiasForm ? blocoFormIdeias() : ""}${E.pauta.ideias ? blocoListaIdeias(E.pauta.ideias, adm) : ""}</div>
     ${ed ? `<div class="painel pauta-ferramentas"><div class="acoes" style="margin:0"><button class="btn sec" type="button" data-acao="pauta-pessoas">Pessoas e termos</button>
       <button class="btn sec" type="button" data-acao="pauta-relatorios-reels">Relatórios dos reels</button></div>
       <p class="sub" style="margin:4px 0 0">Relatórios dos reels: baixa o Excel (em ordem de data, com as colunas Data, Setor, Quem grava e Título — o filtro do cabeçalho mostra um setor só) e o Word (o roteiro completo de cada reel, por setor), dos reels agendados de hoje em diante. Eles têm nomes da equipe: não compartilhe fora do escritório.</p>
       <label for="pauta-csv">Importar o calendário (CSV)</label><input id="pauta-csv" type="file" accept=".csv,text/csv" data-csv-pauta>
       <p class="sub" style="margin:4px 0 0">O CSV do plano de publicações, com as colunas data;dia;semana;tipo;formato;assunto;quem_aparece;objetivo;observacao. A tela confere o arquivo inteiro e mostra o que muda antes de gravar. Ele tem nomes da equipe: nunca vai para o GitHub.</p></div>` : ""}`;
+}
+
+/* v0.124.0: gerar novas pautas com IA. O formulário (quantos dias úteis preencher) e a lista das sugestões (data + assunto), que a
+   equipe ajusta e só o administrador adiciona ao calendário (radar_pauta_criar confere o papel). */
+function blocoFormIdeias(){
+  return `<form data-form="gerarIdeias" class="linha" style="margin-top:10px;gap:8px;align-items:end;flex-wrap:wrap">
+      <label class="sub" for="ideias-dias" style="margin:0">Quantos dias úteis preencher</label>
+      <input id="ideias-dias" name="dias" type="number" min="1" max="30" value="5" style="width:84px">
+      <button class="btn verde" type="submit">Gerar com IA</button>
+      <button class="btn sec" type="button" data-acao="pauta-ideias-cancelar">Cancelar</button></form>
+    <p class="sub" style="margin:4px 0 0">Leva alguns segundos e custa centavos (entra em “Uso da IA neste mês”). Os assuntos são só o TEMA — os dados exatos entram depois, na preparação com a fonte conferida.</p>`;
+}
+function blocoListaIdeias(ideias, adm){
+  return `<div style="margin-top:10px"><p class="sub">${ideias.length} assunto(s) sugerido(s). Ajuste o texto se quiser${adm ? "; depois clique em “Adicionar à Pauta”." : " (só o administrador adiciona ao calendário)."}</p>
+    <div class="rolagem"><table><tr><th>Dia</th><th>Assunto</th><th></th></tr>${ideias.map((x, i) => `
+      <tr><td style="white-space:nowrap">${dataCurta(x.data)}</td>
+        <td><input data-ideia="${i}" value="${h(x.assunto)}" maxlength="180" style="width:100%" aria-label="Assunto de ${dataCurta(x.data)}"></td>
+        <td><button class="btn peq sec" type="button" data-acao="pauta-ideia-tirar" data-i="${i}" aria-label="Tirar ${dataCurta(x.data)}">✕</button></td></tr>`).join("")}</table></div>
+    <div class="acoes">${adm ? `<button class="btn verde" type="button" data-acao="pauta-ideias-adicionar">Adicionar ${ideias.length} à Pauta</button>` : ""}<button class="btn sec" type="button" data-acao="pauta-ideias-cancelar">Fechar</button></div></div>`;
+}
+// lê os assuntos editados na tela de volta para o estado (sobrevive a tirar uma linha e ao "Adicionar")
+function sincronizarIdeias(){
+  if(!E.pauta.ideias) return;
+  document.querySelectorAll("#pauta-ideias input[data-ideia]").forEach(inp => {
+    const i = Number(inp.dataset.ideia); if(E.pauta.ideias[i]) E.pauta.ideias[i].assunto = inp.value.trim(); });
 }
 
 /* v0.28.0: "+ Nova peça" num dia sem peça (só o administrador; o banco confere tudo de novo em radar_pauta_criar: o papel, o dia livre e
@@ -1851,6 +1879,25 @@ const PAUTA = {
         recado("Assunto criado sem legislação. Adicione o texto oficial (ou use “Verificar em fontes oficiais”) e clique em “Preparar com IA”.", "aviso");
       }
     },
+    // v0.124.0: gerar novas pautas com IA (botão visível a todos; só o administrador adiciona ao calendário)
+    "pauta-ideias-abrir"(){ E.pauta.ideiasForm = true; E.pauta.ideias = null; return desenhar(); },
+    "pauta-ideias-cancelar"(){ E.pauta.ideiasForm = false; E.pauta.ideias = null; return desenhar(); },
+    "pauta-ideia-tirar"(el){ sincronizarIdeias(); const i = Number(el.dataset.i);
+      if(E.pauta.ideias){ E.pauta.ideias.splice(i, 1); if(!E.pauta.ideias.length) E.pauta.ideias = null; } return desenhar(); },
+    async "pauta-ideias-adicionar"(){
+      if(!ehAdmin()){ recado("Só o administrador adiciona pautas ao calendário.", true); return; }
+      sincronizarIdeias();
+      const lista = (E.pauta.ideias || []).filter(x => x.assunto && x.assunto.length >= 3);
+      if(!lista.length){ recado("Não há assuntos para adicionar (escreva ao menos 3 letras em cada).", "aviso"); return; }
+      if(!confirm(`Adicionar ${lista.length} pauta(s) de notícia ao calendário? Cada uma nasce planejada; nada é publicado.`)) return;
+      const ok = [], falhas = [];
+      for(const x of lista){
+        try{ await rpc("radar_pauta_criar", {p_peca:{data:x.data, tipo:"noticia", formato:"nenhum", assunto:x.assunto}}); ok.push(x); }
+        catch(e){ falhas.push(`${dataCurta(x.data)}: ${e.message || "não deu"}`); }
+      }
+      E.pauta.ideias = null; E.pauta.ideiasForm = false; await desenhar();
+      recado(`${ok.length} pauta(s) adicionada(s)${falhas.length ? `; ${falhas.length} não entrou(aram): ${falhas.join("; ")}` : ""}.`, falhas.length ? "aviso" : false);
+    },
     async "pessoa-excluir"(el){
       if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça nem em vídeo do corretor ainda guardado (para tirá-la das próximas, desmarque “Ativa”; se ela retirou a autorização, clique em “Revogar termo”).")) return;
       await apagar("radar_pessoas", {id:"eq." + el.dataset.id, select:"id"}); await desenhar(); recado("Pessoa excluída.");
@@ -1874,6 +1921,29 @@ const PAUTA = {
       E.pauta.nova = null; E.pauta.previa = null; E.pauta.peca = Number(id); E.pauta.vista = "semana"; window.scrollTo(0, 0);
       await desenhar();
       recado(`Peça criada para ${dataAgenda(dia)}. Ela está planejada: nada é publicado sem a aprovação do administrador.`);
+    },
+    // v0.124.0: gerar novas pautas com IA — monta as datas dos próximos dias úteis livres e pede um assunto por data
+    async gerarIdeias(f){
+      if(!podeEditar()){ recado("Seu perfil não usa a IA: peça a um editor ou ao administrador para gerar as pautas.", true); return; }
+      let dias = Math.round(Number(f.elements.dias?.value) || 0);
+      if(!(dias >= 1)){ recado("Escolha de 1 a 30 dias.", "aviso"); return; }
+      dias = Math.min(30, dias);
+      const hoje = hojeBrasilia();
+      const ocupadas = new Set((await ler("radar_pauta_pecas", {select:"data", data:"gte." + hoje, order:"data", limit:"400"})).map(p => p.data));
+      const datas = []; let d = hoje, guarda = 0;
+      while(datas.length < dias && guarda++ < 400){
+        const dow = new Date(d + "T12:00:00Z").getUTCDay();                 // 0 domingo, 6 sábado
+        if(dow !== 0 && dow !== 6 && !ocupadas.has(d)) datas.push(d);
+        d = somarDias(d, 1);
+      }
+      if(!datas.length){ recado("Não achei dias úteis livres à frente para preencher.", "aviso"); return; }
+      const evitar = (await ler("radar_pauta_pecas", {select:"assunto", assunto:"not.is.null", order:"data.desc", limit:"60"})).map(p => p.assunto).filter(Boolean);
+      const r = await ia("pauta_ideias", {datas, evitar});
+      E.pauta.ideias = (Array.isArray(r.ideias) ? r.ideias : []).filter(x => x && x.data && x.assunto);
+      E.pauta.ideiasForm = false; await desenhar();
+      if(!E.pauta.ideias.length){ recado("A IA não devolveu assuntos: tente de novo.", true); return; }
+      recado(`${E.pauta.ideias.length} assunto(s) sugerido(s). Ajuste e ${ehAdmin() ? "clique em “Adicionar à Pauta”" : "peça ao administrador para adicionar"}.` +
+        ((r.avisos || []).length ? " " + r.avisos.join(" ") : ""), (r.avisos || []).length ? "aviso" : false);
     },
     async peca(f){
       if(!f.reportValidity()) throw new ErroApi("Confira os campos da peça.");

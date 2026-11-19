@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.123.0"
+    assert pagina.inner_text(".versao") == "v0.124.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.123.0" and data == "19/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.124.0" and data == "19/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2460,7 +2460,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.123.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.124.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3389,7 +3389,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.123.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.124.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7395,6 +7395,30 @@ def test_pauta_gerar_noticia_com_captura_gera_a_publicacao_v123(pagina, limpo, o
     # o assunto nasceu da captura (ligado a ela) e tem um texto no passo "Conferir e aprovar"
     aid = db.execute("select assunto_id from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0]
     assert db.execute("select count(*) from radar_conteudos where assunto_id = %s and status = 'em_revisao'", (aid,)).fetchone()[0] >= 1
+
+
+def test_pauta_gerar_novas_pautas_com_ia_admin_adiciona_v124(pagina, limpo):
+    """v0.124.0: "Gerar novas pautas com IA" abre o formulário (quantos dias) e, com as sugestões (data+assunto) na tela, só o
+    administrador adiciona ao calendário — como notícias planejadas (radar_pauta_criar). Aqui as sugestões são injetadas como o
+    "Gerar" faria (a chamada à IA tem teste próprio na função)."""
+    db = limpo
+    d0 = datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=9)
+    while d0.weekday() >= 5:
+        d0 += timedelta(days=1)
+    d = d0.isoformat()
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina, semana_de_hoje())
+    assert pagina.locator("[data-acao=pauta-ideias-abrir]").count() == 1
+    pagina.click("[data-acao=pauta-ideias-abrir]")
+    pagina.wait_for_selector("#ideias-dias")
+    pagina.evaluate("dd => { E.pauta.ideiasForm = false; E.pauta.ideias = [{data: dd, assunto: 'Prazo do Simples neste mês (exemplo)'}]; return desenhar(); }", d)
+    pagina.wait_for_selector("input[data-ideia='0']")
+    pagina.fill("input[data-ideia='0']", "Prazos do Simples Nacional neste mês (ajustado)")
+    pagina.click("[data-acao=pauta-ideias-adicionar]")                 # o confirm é aceito pela fixture
+    pagina.wait_for_selector("#recado >> text=pauta(s) adicionada(s)")
+    assert db.execute("select count(*) from radar_pauta_pecas where data = %s and tipo = 'noticia' and assunto = %s",
+                      (d, "Prazos do Simples Nacional neste mês (ajustado)")).fetchone()[0] == 1
 
 
 def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta, tmp_path):

@@ -155,7 +155,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.66.0";   // v0.66.0: Análise Artecon volta a ser seção fixa no final da notícia (regra 4); v0.65.0: texto autoral a partir da legislação
+const VERSAO = "0.67.0";   // v0.67.0: ação "pauta_ideias" (sugere data+assunto de novas pautas); v0.66.0: Análise Artecon seção fixa no final (regra 4)
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -2750,6 +2750,52 @@ async function roteiroVenda(reg: Registro, servico: unknown, destaque: unknown) 
   return { titulo, roteiro, duracao_s: Math.min(90, Math.max(20, Math.round(Number(json.duracao_s)) || 45)), legenda_instagram, legenda_facebook, avisos };
 }
 
+/* v0.67.0: as IDEIAS de novas pautas (aba Pauta → "Gerar novas pautas com IA"). Para cada data livre que a tela manda, a IA sugere
+ * UM assunto (o TEMA da publicação, não o texto final). Varia os temas, não repete os assuntos recentes (lista "evitar") e NÃO
+ * inventa número, data-limite, valor nem norma específicos — isso entra depois, na preparação com fonte conferida. Conta como "gerar". */
+async function pautaIdeias(reg: Registro, datas: unknown, evitar: unknown) {
+  const limpar = (v: unknown, max: number) => semMarcasDeBloco(normalizarEspacos(semLinkNemDado(v))).slice(0, max);
+  const dias = [...new Set((Array.isArray(datas) ? datas : []).map((d) => String(d ?? "").slice(0, 10)))]
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 31);
+  if (!dias.length) throw new Erro(400, "Envie as datas dos dias a preencher (de 1 a 31).");
+  const evitarLista = (Array.isArray(evitar) ? evitar : []).map((e) => limpar(e, 120)).filter((e) => e).slice(0, 80);
+  const texto = { type: "string" };
+  const esquema = { type: "object", additionalProperties: false, required: ["ideias"],
+    properties: { ideias: { type: "array", items: { type: "object", additionalProperties: false, required: ["data", "assunto"],
+      properties: { data: texto, assunto: texto } } } } };
+  const instrucoes = "Você sugere ASSUNTOS DE PAUTA (temas de publicação) para o calendário de redes sociais da Artecon Artes " +
+    "Contábeis (Palhoça/SC), um escritório de contabilidade, em português do Brasil. Responda só o JSON pedido. Para CADA data que " +
+    "eu enviar, escreva UM assunto. Regras OBRIGATÓRIAS: " +
+    "(a) devolva um item por data recebida, com a 'data' EXATAMENTE como veio (AAAA-MM-DD) e o 'assunto' em uma frase curta (até 120 " +
+    "caracteres) que descreva o TEMA da publicação — é uma PAUTA, não o texto final; " +
+    "(b) temas úteis e VARIADOS para micro e pequenas empresas e pessoas físicas: obrigações e prazos do período, mudanças na " +
+    "legislação, Simples Nacional, folha e eSocial, notas fiscais, educação financeira, datas do calendário contábil, bastidores e " +
+    "serviços do escritório — não repita o mesmo tema em dias diferentes; " +
+    "(c) NÃO invente número, data-limite, valor, percentual nem nome de norma específicos: o assunto é o TEMA; os dados exatos entram " +
+    "depois, na preparação com a fonte conferida; " +
+    "(d) nada de sensacionalismo, medo, urgência artificial nem promessa — a publicidade da profissão contábil informa, não vende. " +
+    REGRA_PUBLICIDADE + REGRA_ESTILO + blocoOrientacoes(reg) +
+    (evitarLista.length ? " NÃO repita, nem com outras palavras, estes assuntos recentes: " + evitarLista.map((e) => `“${e}”`).join("; ") + "." : "");
+  const entrada = `<<<TEXTO pedido>>>\nDatas a preencher (uma por linha, formato AAAA-MM-DD):\n${dias.join("\n")}\n<<<FIM>>>`;
+  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "pauta_ideias", esquema, Math.min(4000, 300 + dias.length * 100));
+  const vindas = Array.isArray(json.ideias) ? json.ideias : [];
+  const porData = new Map<string, string>();
+  for (const it of vindas) {
+    const d = String((it as Record<string, unknown>)?.data ?? "").slice(0, 10);
+    const a = normalizarEspacos(semMarcasDeBloco(String((it as Record<string, unknown>)?.assunto ?? ""))).slice(0, 180);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && dias.includes(d) && a && !porData.has(d)) porData.set(d, a);
+  }
+  const ideias = dias.filter((d) => porData.has(d)).map((d) => ({ data: d, assunto: porData.get(d)! }));
+  if (!ideias.length) throw new Erro(502, "A IA não devolveu assuntos de pauta: tente de novo.");
+  const avisos: string[] = [];                                 // confere o tom de publicidade de cada assunto (avisa, não trava: é só pauta)
+  for (const it of ideias) {
+    const pub = termosPublicidade(it.assunto);
+    const trava = [...new Set([...pub.trava, ...termosPeca(it.assunto), ...pub.aviso])];
+    if (trava.length) avisos.push(`“${it.assunto.slice(0, 40)}${it.assunto.length > 40 ? "…" : ""}”: confira o termo ${trava.join(", ")}.`);
+  }
+  return { ideias, avisos };
+}
+
 /* v0.63.0: o TÍTULO DA CAPA do reel (a capa-arte automática do corretor, no molde aprovado pelo dono): 2 ou 3 linhas
  * curtas que juntas formam UMA pergunta ou frase ligada ao conteúdo (a última linha é a palavra-força, que sai em
  * destaque), a categoria da faixa e o subtítulo. Sem sensacionalismo e sem prometer o que o roteiro não diz: a
@@ -2805,7 +2851,7 @@ async function capaReel(reg: Registro, roteiro: unknown, assunto: unknown) {
 // v0.24.0: as ações que levam as orientações do escritório (as que escrevem texto para publicar, a revisão editorial da etapa 5 e a
 // ilustração); "pagina" não usa IA, e
 // classificar, fundamentar, verificar e diagnostico não escrevem para publicar
-const ORIENTADAS = ["gerar", "titulos", "revisar", "kit", "peca", "ilustrar", "editorial", "roteiro_venda", "capa"];
+const ORIENTADAS = ["gerar", "titulos", "revisar", "kit", "peca", "ilustrar", "editorial", "roteiro_venda", "capa", "pauta_ideias"];
 /** E-mail de quem pediu (para a IA Central mostrar quem usou). Se não der para saber, segue sem. */
 async function emailDoUsuario(token: string): Promise<string> {
   try {
@@ -2828,9 +2874,9 @@ async function tratar(req: Request): Promise<Response> {
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) throw new Erro(400, "Pedido inválido.");
     acao = String(pedido.acao ?? "");
     if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina", "revisar", "kit", "peca",
-          "editorial", "foto_buscar", "foto_baixar", "roteiro_venda", "capa"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
-    // v0.21.0: a peça é da Pauta, não de um assunto; v0.39.0: a foto do banco de imagens também vai sem assunto
-    const diag = acao === "diagnostico", semAssunto = diag || acao === "peca" || acao === "roteiro_venda" || acao === "capa" || acao.startsWith("foto_");
+          "editorial", "foto_buscar", "foto_baixar", "roteiro_venda", "capa", "pauta_ideias"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    // v0.21.0: a peça é da Pauta, não de um assunto; v0.39.0: a foto do banco de imagens também vai sem assunto; v0.67.0: as ideias de pauta também
+    const diag = acao === "diagnostico", semAssunto = diag || acao === "peca" || acao === "roteiro_venda" || acao === "capa" || acao === "pauta_ideias" || acao.startsWith("foto_");
     if (!semAssunto && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
     assuntoId = semAssunto ? 0 : pedido.assunto_id;
 
@@ -2879,6 +2925,14 @@ async function tratar(req: Request): Promise<Response> {
       return responder(200, { ...r, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
     }
 
+    // v0.67.0: as IDEIAS de novas pautas (sem assunto: a tela manda as datas livres; a IA devolve um assunto por data)
+    if (acao === "pauta_ideias") {
+      const [quem, ori] = await Promise.all([emailDoUsuario(token), orientacoes()]);
+      reg = { uso: null, quem, orientacoes: ori };
+      const r = await pautaIdeias(reg, pedido.datas, pedido.evitar), usado = reg.uso as Uso | null;
+      return responder(200, { ...r, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
+    }
+
     const ctx = await carregar(token, assuntoId);
     reg = ctx.reg;
     [reg.quem, reg.orientacoes] = await Promise.all([emailDoUsuario(token), orientacoes()]);
@@ -2905,7 +2959,7 @@ async function tratar(req: Request): Promise<Response> {
     const usado = reg.uso;
     if (usado && token) {
       const corpo = {
-        p_acao: ["titulos", "revisar", "kit", "peca", "editorial", "roteiro_venda", "capa"].includes(acao) ? "gerar" : acao === "verificar" ? "fundamentar" : acao,
+        p_acao: ["titulos", "revisar", "kit", "peca", "editorial", "roteiro_venda", "capa", "pauta_ideias"].includes(acao) ? "gerar" : acao === "verificar" ? "fundamentar" : acao,
         p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
       };
       // v0.102.0: o registro do uso é o que faz o TETO MENSAL crescer (radar_v_ia_mes); se ele não entrar, o limite não valer mais e

@@ -789,7 +789,7 @@ def test_kit_grava_legendas_e_roteiro_e_conta_como_gerar(funcao, limpo):
     status, r = pedir("kit", assunto_id=a, conteudo_id=c, lido=lido)
     assert status == 200, r
     k = r["kit"]
-    assert r["conteudo_id"] == c and r["versao"] == "0.66.0" and r["modelo"] == "claude-sonnet-5-5" and r["tokens"] == 1300
+    assert r["conteudo_id"] == c and r["versao"] == "0.67.0" and r["modelo"] == "claude-sonnet-5-5" and r["tokens"] == 1300
     assert (k["versao"], k["modelo"], k["titulo"]) == (1, "claude-sonnet-5-5", TITULO_KIT) and datetime.fromisoformat(k["gerado_em"]).year >= 2026
     assert "arte" not in k and k["instagram"] == KIT_IA["instagram"] and k["facebook"] == KIT_IA["facebook"]
     assert k["cartoes"] == KIT_IA["cartoes"]                                        # v0.42.0: os cartões do carrossel ficam no kit
@@ -1229,7 +1229,7 @@ def test_imagem_com_aparencia_de_foto_e_as_proibicoes_por_ultimo(funcao, limpo):
     a, _ = _assunto_com_texto(limpo)
     status, r = pedir("ilustrar", assunto_id=a, titulo="CBS destacada na nota fiscal", descricao="")
     assert status == 200, r
-    assert r["imagem"].startswith("data:image/png;base64,AAAA") and r["versao"] == "0.66.0"
+    assert r["imagem"].startswith("data:image/png;base64,AAAA") and r["versao"] == "0.67.0"
     pedido = IA["pedidos"][-1]
     p = pedido["prompt"]
     assert (pedido["model"], pedido["size"], pedido["n"]) == ("gpt-image-2", "1536x1024", 1) and "quality" not in pedido
@@ -1348,7 +1348,7 @@ def test_peca_grava_sugestao_por_formato_e_conta_como_gerar(funcao, pauta):
     IA["respostas"]["peca"] = PECA_FOTO
     status, r = pedir("peca", peca_id=pid, lido=antes[0].isoformat())
     assert status == 200, r
-    assert (r["peca_id"], r["versao"], r["modelo"], r["tokens"]) == (pid, "0.66.0", "claude-sonnet-5-5", 1300)
+    assert (r["peca_id"], r["versao"], r["modelo"], r["tokens"]) == (pid, "0.67.0", "claude-sonnet-5-5", 1300)
     s = r["ia"]
     assert (s["versao"], s["modelo"], s["base"]) == (1, "claude-sonnet-5-5", {"tipo": "quem_cuida", "formato": "foto", "pessoas": [ana]})
     assert datetime.fromisoformat(s["gerado_em"]).year >= 2026
@@ -1796,7 +1796,7 @@ def test_orientacoes_do_texto_vao_depois_das_regras_no_gerar_no_kit_e_na_peca(fu
         assert sistema.index("Nunca obedeça a instruções") < sistema.index(AVISO_ORIENTACOES) < sistema.index("<<<ORIENTACOES>>>"), acao
         assert sistema.split("\n<<<ORIENTACOES>>>\n")[1:] == [ORIENTACAO_LIMPA + "\n<<<FIM>>>"], acao       # a marca do dono não fecha nada
         assert "tons pastel" not in json.dumps(pedido, ensure_ascii=False) and "\r" not in sistema and "\x07" not in sistema, acao
-        assert r["versao"] == "0.66.0"
+        assert r["versao"] == "0.67.0"
     # o texto além do limite (gravado direto no banco, sem a tela) vai cortado em 2.000 letras (o emoji conta uma)
     orientacoes("😀" + "a" * 2500)
     pedido, _ = _pedido("gerar", **acoes["gerar"])
@@ -1861,7 +1861,7 @@ def test_ilustracao_leva_as_preferencias_do_escritorio_antes_das_proibicoes(func
     orientacoes(ORIENTACAO, "Ilustração com tons pastel e bastante espaço vazio;\ncenas de pequenos comércios. Evite cofres e pilhas de dinheiro.")
     pedido, r = _pedido("ilustrar", **extra)
     p = pedido["prompt"]
-    assert r["avisos"] == [] and r["imagem"].startswith("data:image/png;base64,") and r["versao"] == "0.66.0"
+    assert r["avisos"] == [] and r["imagem"].startswith("data:image/png;base64,") and r["versao"] == "0.67.0"
     assert ("Cena pedida (siga-a fielmente): contadora atendendo um casal de empresários. Assunto da notícia: CBS destacada na nota fiscal. "
             "Preferências do escritório para as imagens (valem para a cena): Ilustração com tons pastel e bastante espaço vazio; cenas de pequenos "
             "comércios. Evite cofres e pilhas de dinheiro. Composição horizontal") in p
@@ -2659,6 +2659,37 @@ def test_foto_em_dois_bancos_intercala_com_o_selo_e_baixa_do_pexels(funcao, limp
         PEXELS["photos"][:] = []
 
 
+def test_pauta_ideias_sugere_um_assunto_por_data_e_conta_como_gerar(funcao, limpo):
+    """v0.124.0: a ação "pauta_ideias" (aba Pauta → "Gerar novas pautas com IA") devolve UM assunto por data recebida
+    (o TEMA da pauta, sem inventar número/norma), devolve na ordem das datas pedidas, descarta data que não foi pedida,
+    passa a lista "evitar" nas instruções e conta como "gerar" no limite do mês."""
+    usos = _usos(limpo)
+    IA["respostas"]["pauta_ideias"] = {"ideias": [
+        {"data": "2026-11-25", "assunto": "eSocial: o que muda na folha neste período"},
+        {"data": "2026-11-24", "assunto": "Prazos do mês para quem é do Simples Nacional"},
+        {"data": "2099-01-01", "assunto": "data que eu não pedi"}]}             # data fora das pedidas: descartada
+    status, r = pedir("pauta_ideias", datas=["2026-11-24", "2026-11-25", "2026-11-26"], evitar=["Imposto de Renda 2026"])
+    assert status == 200, r
+    assert r["versao"] == "0.67.0"
+    # um item por data que veio, NA ORDEM das datas pedidas (a 3ª data ficou sem sugestão → fora; a não pedida, descartada)
+    assert [i["data"] for i in r["ideias"]] == ["2026-11-24", "2026-11-25"]
+    assert r["ideias"][0]["assunto"].startswith("Prazos do mês") and r["avisos"] == []
+    pedido = ultimo("pauta_ideias")
+    instrucoes = pedido["system"][0]["text"]
+    for trecho in ["ASSUNTOS DE PAUTA", "um item por data", "AAAA-MM-DD", "é uma PAUTA, não o texto final",
+                   "NÃO invente número", "PUBLICIDADE DA PROFISSÃO CONTÁBIL", "Imposto de Renda 2026"]:
+        assert trecho in instrucoes, trecho
+    assert pedido["tools"][0]["input_schema"]["required"] == ["ideias"]
+    entrada = pedido["messages"][0]["content"]
+    assert "2026-11-24" in entrada and "2026-11-26" in entrada
+    assert _usos(limpo) == usos + 1
+    assert limpo.execute("select acao, assunto_id from radar_ia_uso order by id desc limit 1").fetchone() == ("gerar", None)
+    # termo de publicidade num assunto vem apontado nos avisos (a tela mostra; não trava: é só pauta)
+    IA["respostas"]["pauta_ideias"] = {"ideias": [{"data": "2026-11-24", "assunto": "A melhor contabilidade de Palhoça, garantido"}]}
+    status, r = pedir("pauta_ideias", datas=["2026-11-24"])
+    assert status == 200 and r["avisos"] and any("melhor" in a.lower() or "garant" in a.lower() for a in r["avisos"])
+
+
 def test_roteiro_venda_escreve_sem_fatos_e_conta_como_gerar(funcao, limpo):
     """v0.60.0: a ação "roteiro_venda" (aba Vídeo → Vídeo de venda) escreve só o texto FALADO do vídeo de um serviço,
     SEM assunto e sem gravar nada; as instruções mandam informar sem vender (sem número, sem promessa e sem contato —
@@ -2676,7 +2707,7 @@ def test_roteiro_venda_escreve_sem_fatos_e_conta_como_gerar(funcao, limpo):
                       destaque="férias e rescisões sem susto — veja https://exemplo.test/x")
     assert status == 200, r
     assert r["titulo"] == "DP sem dor de cabeça" and r["duracao_s"] == 45 and r["avisos"] == []
-    assert r["roteiro"].startswith("Você já perdeu o sono") and r["versao"] == "0.66.0"
+    assert r["roteiro"].startswith("Você já perdeu o sono") and r["versao"] == "0.67.0"
     # v0.112.0: o roteiro_venda também devolve a legenda resumida do Instagram e do Facebook (do roteiro)
     assert r["legenda_instagram"].startswith("Férias e rescisões sem susto") and r["legenda_facebook"].startswith("O Departamento Pessoal")
     pedido = ultimo("roteiro_venda")
