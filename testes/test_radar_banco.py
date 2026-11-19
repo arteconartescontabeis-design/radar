@@ -504,6 +504,8 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_pauta_criar',
                                                            -- v0.64.0: mudar o dia da peça (confere o administrador, por dentro)
                                                            'radar_pauta_mudar_data',
+                                                           -- v0.122.0: apagar a peça da Pauta (confere o administrador, por dentro)
+                                                           'radar_pauta_apagar',
                                                            -- v0.29.0: a situação dos lembretes (a função confere que é o administrador)
                                                            'radar_lembretes_situacao',
                                                            -- v0.30.0: possível prorrogação na agenda (a função confere o perfil)
@@ -3870,6 +3872,38 @@ def test_liberacao_nao_passa_por_cima_de_verificar(pauta):
     assert "RADAR165" in str(e.value)
 
 
+def test_pauta_apagar_so_admin_e_barra_a_ja_publicada(pauta):
+    """v0.122.0: só o administrador apaga uma peça da Pauta; ela sai de vez, com o vídeo junto, e o DELETE fica na trilha.
+    A peça já publicada numa rede não é apagada (o histórico fica) — RADAR362."""
+    db = pauta
+    pessoa = pessoa_do_corretor(db)
+    pid = nova_peca(db, tipo="reel", formato="reel", roteiro="A equipe da Artecon explica a folha de pagamento.")
+    vid = video_pronto(db, pid, pessoa)
+    db.execute("update radar_pauta_pecas set video_id = %s where id = %s", (vid, pid))
+    with como("authenticated", EDITOR) as c:                  # editor não apaga
+        with pytest.raises(Exception) as e:
+            c.execute("select radar_pauta_apagar(%s)", (pid,))
+    assert "RADAR360" in str(e.value)
+    assert db.execute("select count(*) from radar_pauta_pecas where id=%s", (pid,)).fetchone()[0] == 1
+    with como("authenticated", ADMIN) as c:                   # admin apaga: some a peça e o vídeo
+        r = c.execute("select radar_pauta_apagar(%s)", (pid,)).fetchone()[0]
+    assert r["apagada"] is True and r["id"] == pid
+    assert db.execute("select count(*) from radar_pauta_pecas where id=%s", (pid,)).fetchone()[0] == 0
+    assert db.execute("select count(*) from radar_videos where peca_id=%s", (pid,)).fetchone()[0] == 0
+    assert db.execute("select count(*) from radar_auditoria where tabela='radar_pauta_pecas' and acao='DELETE' and registro_id=%s",
+                      (str(pid),)).fetchone()[0] == 1          # a trilha guardou o DELETE
+    # a peça já publicada à mão não é apagada (o gatilho protege publicado_manual_em: marca com o gatilho desligado, como a função faz)
+    outra = nova_peca(db, dias=3)
+    db.execute("alter table radar_pauta_pecas disable trigger radar_tg_pauta_peca")
+    db.execute("update radar_pauta_pecas set publicado_manual_em = now()::date where id=%s", (outra,))
+    db.execute("alter table radar_pauta_pecas enable trigger radar_tg_pauta_peca")
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(Exception) as e:
+            c.execute("select radar_pauta_apagar(%s)", (outra,))
+    assert "RADAR362" in str(e.value)
+    assert db.execute("select count(*) from radar_pauta_pecas where id=%s", (outra,)).fetchone()[0] == 1
+
+
 def pessoa_do_corretor(db, nome="Ana Teste", na_peca="Ana", **campos):
     """Pessoa com o termo novo, que cita o corretor de vídeo (termo_corretor_em)."""
     pid = nova_pessoa(db, nome, na_peca, **campos)
@@ -5410,7 +5444,8 @@ def test_hoje_e_de_brasilia_e_nenhuma_funcao_nova_usa_current_date(db):
                                 or p.proname in ('radar_redes_conferir_agenda', 'radar_fn_pauta_peca', 'radar_fn_pessoa_apagar'))""").fetchall()
     # v0.64.0: + radar_pauta_mudar_data; v0.22.0: + radar_pauta_pecas_da_pessoa; v0.28.0: + radar_pauta_criar, radar_pauta_linha_invalida e radar_pauta_hora_padrao
     # v0.102.0: + radar_pauta_pessoas_conferir (o conjunto p.pessoas + quem está só no vídeo, para a reconferência do termo na publicação)
-    assert len(novas) == 35
+    # v0.120.0: + radar_pauta_bloqueios (os pontos liberáveis pelo administrador); v0.122.0: + radar_pauta_apagar
+    assert len(novas) == 37
     assert [n for n, src in novas if "current_date" in src.lower()] == []
 
 

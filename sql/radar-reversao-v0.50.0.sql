@@ -324,12 +324,16 @@ drop function if exists public.radar_pauta_importar(jsonb);
 -- v0.28.0: "+ Nova peça" e a conferência da linha do calendário que ela divide com a importação
 drop function if exists public.radar_pauta_criar(jsonb);
 drop function if exists public.radar_pauta_mudar_data(bigint, date, time);   -- v0.64.0
+drop function if exists public.radar_pauta_apagar(bigint);                   -- v0.122.0
 drop function if exists public.radar_pauta_linha_invalida(jsonb);
 drop function if exists public.radar_pauta_hora_padrao();
 drop function if exists public.radar_pauta_conferir(bigint, text[]);
 drop function if exists public.radar_pauta_marcar_pronta(bigint, timestamptz);
+drop function if exists public.radar_pauta_marcar_pronta(bigint, timestamptz, jsonb);   -- v0.120.0: a liberação do administrador
+drop function if exists public.radar_pauta_bloqueios(bigint, text[], date);             -- v0.120.0
 drop function if exists public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[]);
 drop function if exists public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text);
+drop function if exists public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text, jsonb);   -- v0.120.0
 drop function if exists public.radar_pauta_desaprovar(bigint, boolean);
 drop function if exists public.radar_pauta_publicar_agora(bigint, boolean);
 drop function if exists public.radar_pauta_pode_copiar(bigint, timestamptz, text);

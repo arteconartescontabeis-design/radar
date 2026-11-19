@@ -3812,6 +3812,34 @@ end $$;
 revoke all on function public.radar_pauta_mudar_data(bigint, date, time) from public, anon, authenticated, service_role;
 grant execute on function public.radar_pauta_mudar_data(bigint, date, time) to authenticated;
 
+-- v0.122.0: apagar uma peça da Pauta de vez (só o administrador). Leva junto os vídeos (e os clipes deles, por cascata)
+-- e os envios de rede ainda não publicados. A peça que JÁ foi (ou está sendo) publicada numa rede não é apagada — o
+-- histórico fica: nela, use "Cancelar a peça". Diferente de Cancelar, que mantém a peça no calendário como cancelada.
+create or replace function public.radar_pauta_apagar(p_id bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.radar_pauta_pecas%rowtype;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR360: só o administrador apaga uma peça da Pauta' using errcode = '42501';
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_id for update;
+  if p.id is null then
+    raise exception 'RADAR361: peça não encontrada (atualize a página)' using errcode = 'P0001';
+  end if;
+  if p.publicado_manual_em is not null
+     or exists (select 1 from public.radar_redes_envios e where e.peca_id = p.id and e.situacao in ('publicado','enviando')) then
+    raise exception 'RADAR362: esta peça já foi (ou está sendo) publicada numa rede — para tirar do calendário sem apagar o histórico, use "Cancelar a peça"' using errcode = 'P0001';
+  end if;
+  update public.radar_pauta_pecas set video_id = null where id = p.id;    -- solta a referência antes de apagar o vídeo
+  delete from public.radar_videos where peca_id = p.id;                    -- os clipes vão junto (on delete cascade)
+  delete from public.radar_redes_envios where peca_id = p.id;              -- só sobram os não publicados (os publicados barram acima)
+  delete from public.radar_pauta_pecas where id = p.id;                    -- a trilha (radar_auditoria) guarda o DELETE
+  return jsonb_build_object('apagada', true, 'id', p.id, 'data', p.data, 'tipo', p.tipo);
+end $$;
+revoke all on function public.radar_pauta_apagar(bigint) from public, anon, authenticated, service_role;
+grant execute on function public.radar_pauta_apagar(bigint) to authenticated;
+
 -- O que falta resolver na peça (a tela mostra a lista). p_canais nulo: os canais que têm legenda.
 create or replace function public.radar_pauta_conferir(p_peca bigint, p_canais text[]) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
@@ -7411,6 +7439,7 @@ grant execute on function public.radar_site_exclusao_concluir(bigint, boolean, t
 grant execute on function public.radar_pauta_importar(jsonb) to authenticated;
 grant execute on function public.radar_pauta_criar(jsonb) to authenticated;          -- v0.28.0 (a função confere que é o administrador)
 grant execute on function public.radar_pauta_mudar_data(bigint, date, time) to authenticated;   -- v0.64.0 (a função confere que é o administrador)
+grant execute on function public.radar_pauta_apagar(bigint) to authenticated;        -- v0.122.0 (a função confere que é o administrador)
 grant execute on function public.radar_pauta_conferir(bigint, text[]) to authenticated;
 grant execute on function public.radar_pauta_marcar_pronta(bigint, timestamptz, jsonb) to authenticated;   -- v0.120.0: + a liberação do administrador
 grant execute on function public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text, jsonb) to authenticated;   -- v0.22.0: + o vídeo; v0.120.0: + a liberação

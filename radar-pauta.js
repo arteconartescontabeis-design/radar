@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.121.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.122.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -299,7 +299,7 @@ async function telaSemana(){
       ${p.assunto ? `<p class="sub pauta-assunto">${h(cortarPauta(p.assunto, 140))}</p>` : ""}
       ${quem.length ? `<p class="pauta-pessoas">${quem.map(t => `<span>${h(t.nome_na_peca)} ${seloTermo(t)}</span>`).join(" ")}</p>` : ""}
       ${p.tipo === "noticia" ? `<p class="sub">Dia de notícia: publique por <button class="link" type="button" data-acao="aba" data-aba="assuntos">Assuntos</button> ou <button class="link" type="button" data-acao="aba" data-aba="publicacoes">Publicações</button>.</p>` : ""}
-      <div class="acoes"><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir</button>${extra || ""}</div></article>`; };
+      <div class="acoes"><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir</button>${adm ? `<button class="btn peq perigo" type="button" data-acao="pauta-apagar" data-id="${p.id}">Apagar</button>` : ""}${extra || ""}</div></article>`; };
   const cartao = d => { const ps = porDia[d] || [];
     const formulario = novaAqui(d) && E.pauta.nova === d
       ? `<article class="pauta-dia nova${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3>${formNovaPeca(d, hoje)}</article>` : "";
@@ -1805,6 +1805,11 @@ const PAUTA = {
     "peca-voltar-producao"(el){ return situacaoDaPeca(el, "em_producao", "", "A peça voltou para a produção."); },
     "peca-cancelar"(el){ return situacaoDaPeca(el, "cancelada", "Cancelar esta peça? Ela fica no calendário como cancelada (dá para reabrir).", "Peça cancelada."); },
     "peca-reabrir"(el){ return situacaoDaPeca(el, "planejada", "", "Peça reaberta: voltou a planejada."); },
+    // v0.122.0: apagar a peça da lista (só o administrador; o banco confere o papel e barra a que já foi publicada numa rede)
+    async "pauta-apagar"(el){
+      if(!confirm("Apagar esta peça da Pauta? Ela sai do calendário de vez, com o vídeo e os envios ainda não publicados. Não dá para desfazer. (A peça já publicada numa rede não é apagada — nela, use “Cancelar a peça”.)")) return;
+      await rpc("radar_pauta_apagar", {p_id:Number(el.dataset.id)}); await desenhar(); recado("Peça apagada da Pauta.");
+    },
     async "pessoa-excluir"(el){
       if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça nem em vídeo do corretor ainda guardado (para tirá-la das próximas, desmarque “Ativa”; se ela retirou a autorização, clique em “Revogar termo”).")) return;
       await apagar("radar_pessoas", {id:"eq." + el.dataset.id, select:"id"}); await desenhar(); recado("Pessoa excluída.");
