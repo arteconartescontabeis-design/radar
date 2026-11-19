@@ -3811,6 +3811,64 @@ def peca_aprovada(db, dias=2, canais=("instagram",), **campos):
 SHA_VIDEO = "a" * 64
 FALA_REEL = "Fala: o prazo vence no dia 20. Confira com a gente antes do vencimento para não pagar multa."
 
+LIB_PRONTA = "select radar_pauta_marcar_pronta(%s, %s, %s::jsonb)"
+LIB_APROVAR = "select radar_pauta_aprovar(%s, %s, %s::text[], %s, %s::bigint[], %s, %s::text[], %s, %s::jsonb)"
+
+
+def test_liberacao_do_admin_publica_com_numero_sem_fonte_e_fica_registrada(pauta):
+    """v0.120.0: um número sem fonte trava marcar_pronta/aprovar (RADAR165). radar_pauta_bloqueios tira só o liberável (número sem
+    fonte); com a liberação do ADMINISTRADOR (motivo), o ponto é ignorado e a liberação fica registrada (motivo, quem, quando).
+    Editor não libera; sem motivo não libera."""
+    db = pauta
+    pid = nova_peca(db, chamada="Veja os 2 motivos e as 3 dicas da equipe")   # 2 e 3 não estão nas informações conferidas
+    with como("authenticated", EDITOR) as c:
+        with pytest.raises(Exception) as e:
+            c.execute("select radar_pauta_marcar_pronta(%s, %s)", (pid, lido_peca(db, pid)))
+    assert "RADAR165" in str(e.value)
+    data = db.execute("select data from radar_pauta_pecas where id=%s", (pid,)).fetchone()[0]
+    probs = db.execute("select radar_pauta_problemas(%s, '{instagram}'::text[], %s)", (pid, data)).fetchone()[0]
+    bloq = db.execute("select radar_pauta_bloqueios(%s, '{instagram}'::text[], %s)", (pid, data)).fetchone()[0]
+    assert any("Números que não estão" in p for p in probs) and not any("Números que não estão" in b for b in bloq)
+    lib = json.dumps({"motivo": "“promoção” = a data Black Friday, informativo", "pontos": ["números 2, 3"]})
+    with como("authenticated", EDITOR) as c:                                  # editor não libera
+        with pytest.raises(Exception) as e:
+            c.execute(LIB_PRONTA, (pid, lido_peca(db, pid), lib))
+    assert "RADAR171" in str(e.value)
+    with como("authenticated", ADMIN) as c:                                   # admin sem motivo não libera
+        with pytest.raises(Exception) as e:
+            c.execute(LIB_PRONTA, (pid, lido_peca(db, pid), json.dumps({"motivo": "  ", "pontos": []})))
+    assert "RADAR171" in str(e.value)
+    with como("authenticated", ADMIN) as c:                                   # admin com motivo: fica pronta e registra
+        c.execute(LIB_PRONTA, (pid, lido_peca(db, pid), lib))
+    s, l = db.execute("select situacao, liberacao from radar_pauta_pecas where id=%s", (pid,)).fetchone()
+    assert s == "pronta" and l["motivo"].startswith("“promoção”") and l["por"] is not None and l["em"] is not None
+    with como("authenticated", ADMIN) as c:                                   # aprovar também passa com a liberação e registra
+        c.execute(LIB_APROVAR, (pid, lido_peca(db, pid), ["instagram"], "agendar", [lamina(ADMIN)], IDENT, ["pessoas", "datas"], None, lib))
+    s, l = db.execute("select situacao, liberacao from radar_pauta_pecas where id=%s", (pid,)).fetchone()
+    assert s == "aprovada" and l["pontos"] == ["números 2, 3"]
+
+
+def test_liberacao_some_quando_o_conteudo_muda(pauta):
+    """v0.120.0: mexeu no que vai ao ar, a liberação do administrador não vale mais (o gatilho limpa) e a peça volta à produção."""
+    db = pauta
+    pid = nova_peca(db, chamada="Veja os 2 motivos e as 3 dicas da equipe")
+    with como("authenticated", ADMIN) as c:
+        c.execute(LIB_PRONTA, (pid, lido_peca(db, pid), json.dumps({"motivo": "informativo da data", "pontos": ["números 2, 3"]})))
+    assert db.execute("select liberacao from radar_pauta_pecas where id=%s", (pid,)).fetchone()[0] is not None
+    db.execute("update radar_pauta_pecas set chamada = %s where id=%s", ("Outra chamada sem número nenhum", pid))
+    s, l = db.execute("select situacao, liberacao from radar_pauta_pecas where id=%s", (pid,)).fetchone()
+    assert s == "em_producao" and l is None
+
+
+def test_liberacao_nao_passa_por_cima_de_verificar(pauta):
+    """v0.120.0: [VERIFICAR] (fato não confirmado) é bloqueio, não liberável: nem com a liberação do admin publica."""
+    db = pauta
+    pid = nova_peca(db, chamada="Veja o [VERIFICAR o dado] da folha da equipe")
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(Exception) as e:
+            c.execute(LIB_PRONTA, (pid, lido_peca(db, pid), json.dumps({"motivo": "quero publicar mesmo assim", "pontos": ["verificar"]})))
+    assert "RADAR165" in str(e.value)
+
 
 def pessoa_do_corretor(db, nome="Ana Teste", na_peca="Ana", **campos):
     """Pessoa com o termo novo, que cita o corretor de vídeo (termo_corretor_em)."""

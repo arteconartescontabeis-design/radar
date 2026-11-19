@@ -147,7 +147,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.50.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.120.0', v_antes);
 end $$;
 
 -- v0.43.0: a faxina das sobras da instalação por partes da v0.42.0 (feita pelo assistente em 20/10, por etapas pequenas:
@@ -780,6 +780,8 @@ create index if not exists radar_video_acessos_video_idx on public.radar_video_a
 -- "viu" (A pessoa viu o vídeo final, quando alguma pessoa marcada pediu no termo).
 alter table public.radar_pauta_pecas add column if not exists video_id     uuid references public.radar_videos(id) on delete restrict;
 alter table public.radar_pauta_pecas add column if not exists video_sha256 text check (video_sha256 ~ '^[0-9a-f]{64}$');
+-- v0.120.0: a liberação do administrador (publicar com ponto de publicidade/CFC ou número sem fonte) — motivo, quem, quando e os pontos
+alter table public.radar_pauta_pecas add column if not exists liberacao    jsonb;
 do $$
 begin
   if not exists (select 1 from pg_constraint where conrelid = 'public.radar_pauta_pecas'::regclass
@@ -3544,6 +3546,7 @@ begin
     new.artes := '{}'; new.arte_identificacao := null; new.link_instagram := null; new.link_facebook := null;
     new.publicado_manual_em := null; new.publicado_manual_por := null;
     new.video_id := null; new.video_sha256 := null;                                    -- v0.22.0: só a aprovação amarra o vídeo
+    new.liberacao := null;                                                             -- v0.120.0: nasce sem liberação do administrador
     new.versao_publicavel := now(); new.criado_por := auth.uid(); new.criado_em := now();
     v_novas := new.pessoas;
   else
@@ -3588,6 +3591,7 @@ begin
     end if;
     if v_mudou then
       new.versao_publicavel := now();
+      new.liberacao := null;                           -- v0.120.0: mudou o que vai ao ar: a liberação do administrador não vale mais
     end if;
     v_novas := array(select x from unnest(new.pessoas) x where not x = any(old.pessoas));
   end if;
@@ -3824,17 +3828,36 @@ begin
            coalesce(p_canais, public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook)), p.data)));
 end $$;
 
+-- v0.120.0: os pontos a resolver que NÃO têm liberação do administrador (os "bloqueios"): todos, menos os liberáveis. Hoje o único
+-- liberável que vem do banco é o "número sem fonte" (a publicidade/CFC é trava da tela, não entra aqui). [VERIFICAR], boletim pago,
+-- termo de pessoa, estrutura, limite de plataforma e identificação legal ficam SEMPRE — são verdade/legalidade, não tom de propaganda.
+create or replace function public.radar_pauta_bloqueios(p_peca bigint, p_canais text[], p_data date) returns text[]
+language sql stable set search_path = public as $$
+  select coalesce(array_agg(p order by o), '{}')
+    from unnest(public.radar_pauta_problemas(p_peca, p_canais, p_data)) with ordinality t(p, o)
+   where p not like 'Números que não estão nas informações conferidas:%';
+$$;
+revoke all on function public.radar_pauta_bloqueios(bigint, text[], date) from public, anon, authenticated, service_role;
+
 -- "Salvar e marcar como pronta": a peça em produção, sem nenhum problema, fica pronta para o administrador aprovar.
+-- v0.120.0: com p_liberacao (só o administrador), os pontos liberáveis são ignorados e a liberação fica registrada (motivo, quem, quando).
 -- Devolve a nova versão da peça (atualizado_em), para a tela.
-create or replace function public.radar_pauta_marcar_pronta(p_peca bigint, p_lido timestamptz) returns timestamptz
+create or replace function public.radar_pauta_marcar_pronta(p_peca bigint, p_lido timestamptz, p_liberacao jsonb default null) returns timestamptz
 language plpgsql security definer set search_path = public as $$
 declare
   p      public.radar_pauta_pecas%rowtype;
   v_prob text[];
   v_em   timestamptz;
+  v_lib  boolean := p_liberacao is not null and jsonb_typeof(p_liberacao) = 'object';   -- v0.120.0: liberação do administrador
 begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
     raise exception 'RADAR159: só o editor ou o administrador mexe na Pauta' using errcode = '42501';
+  end if;
+  if v_lib and coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR171: só o administrador libera a publicação com pontos pendentes' using errcode = '42501';
+  end if;
+  if v_lib and length(btrim(coalesce(p_liberacao->>'motivo', ''))) < 3 then
+    raise exception 'RADAR171: escreva o motivo da liberação (ao menos 3 caracteres)' using errcode = 'P0001';
   end if;
   select * into p from public.radar_pauta_pecas where id = p_peca for update;
   if p.id is null then
@@ -3846,12 +3869,17 @@ begin
   if p.situacao not in ('planejada','em_producao') then
     raise exception 'RADAR164: só a peça planejada ou em produção fica pronta (situação atual: %)', p.situacao using errcode = 'P0001';
   end if;
-  v_prob := public.radar_pauta_problemas(p.id, public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook), p.data);
+  v_prob := case when v_lib then public.radar_pauta_bloqueios(p.id, public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook), p.data)
+                 else public.radar_pauta_problemas(p.id, public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook), p.data) end;
   if cardinality(v_prob) > 0 then
     raise exception 'RADAR165: há % ponto(s) a resolver: a lista aparece na tela', cardinality(v_prob) using errcode = 'P0001';
   end if;
   perform set_config('radar.pauta', '1', true);
-  update public.radar_pauta_pecas set situacao = 'pronta' where id = p.id returning atualizado_em into v_em;
+  update public.radar_pauta_pecas
+     set situacao = 'pronta',
+         liberacao = case when v_lib then jsonb_build_object('motivo', btrim(p_liberacao->>'motivo'),
+                            'pontos', coalesce(p_liberacao->'pontos', '[]'::jsonb), 'por', auth.uid(), 'em', now()) else liberacao end
+   where id = p.id returning atualizado_em into v_em;
   perform set_config('radar.pauta', '', true);
   return v_em;
 end $$;
@@ -3865,8 +3893,10 @@ end $$;
 -- v0.22.0: no reel, p_video_sha256 é o hash do vídeo corrigido que a tela mostrou: tem de ser o do vídeo pronto, e a peça fica amarrada
 -- a ele (video_id, video_sha256); pede a caixa "video" e, se alguma pessoa marcada quer ver a peça antes (termo), a caixa "viu".
 drop function if exists public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[]);
+drop function if exists public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text);
 create or replace function public.radar_pauta_aprovar(p_peca bigint, p_lido timestamptz, p_canais text[], p_modo text, p_artes bigint[],
-                                                      p_arte_identificacao text, p_conferencias text[], p_video_sha256 text default null)
+                                                      p_arte_identificacao text, p_conferencias text[], p_video_sha256 text default null,
+                                                      p_liberacao jsonb default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_vid    public.radar_videos%rowtype;
@@ -3882,9 +3912,13 @@ declare
   v_canal  text;
   v_id     bigint;
   v_ids    jsonb := '{}'::jsonb;
+  v_lib    boolean := p_liberacao is not null and jsonb_typeof(p_liberacao) = 'object';   -- v0.120.0: liberação do administrador
 begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
     raise exception 'RADAR159: só o administrador aprova a peça da Pauta' using errcode = '42501';
+  end if;
+  if v_lib and length(btrim(coalesce(p_liberacao->>'motivo', ''))) < 3 then
+    raise exception 'RADAR171: escreva o motivo da liberação (ao menos 3 caracteres)' using errcode = 'P0001';
   end if;
   select * into p from public.radar_pauta_pecas where id = p_peca for update;
   if p.id is null then
@@ -3905,7 +3939,7 @@ begin
     raise exception 'RADAR164: este formato sai à mão (escolha “Vou publicar à mão”)' using errcode = 'P0001';
   end if;
   select coalesce(array_agg(distinct c), '{}') into v_canais from unnest(coalesce(p_canais, '{}')) c;
-  v_prob := public.radar_pauta_problemas(p.id, v_canais, p.data);
+  v_prob := case when v_lib then public.radar_pauta_bloqueios(p.id, v_canais, p.data) else public.radar_pauta_problemas(p.id, v_canais, p.data) end;
   if cardinality(v_prob) > 0 then
     raise exception 'RADAR165: há % ponto(s) a resolver: a lista aparece na tela', cardinality(v_prob) using errcode = 'P0001';
   end if;
@@ -3988,6 +4022,8 @@ begin
          aprovado_canais = array_remove(array[case when 'instagram' = any(v_canais) then 'instagram' end,      -- na ordem da tela
                                               case when 'facebook' = any(v_canais) then 'facebook' end], null),
          manual_desfeita_em = null,
+         liberacao = case when v_lib then jsonb_build_object('motivo', btrim(p_liberacao->>'motivo'),
+                            'pontos', coalesce(p_liberacao->'pontos', '[]'::jsonb), 'por', auth.uid(), 'em', now()) else liberacao end,
          artes = v_artes, arte_identificacao = left(btrim(p_arte_identificacao), 300),
          video_id = v_vid.id, video_sha256 = v_vid.sha256                         -- v0.22.0: nulos fora do reel
    where id = p.id;
@@ -7375,8 +7411,8 @@ grant execute on function public.radar_pauta_importar(jsonb) to authenticated;
 grant execute on function public.radar_pauta_criar(jsonb) to authenticated;          -- v0.28.0 (a função confere que é o administrador)
 grant execute on function public.radar_pauta_mudar_data(bigint, date, time) to authenticated;   -- v0.64.0 (a função confere que é o administrador)
 grant execute on function public.radar_pauta_conferir(bigint, text[]) to authenticated;
-grant execute on function public.radar_pauta_marcar_pronta(bigint, timestamptz) to authenticated;
-grant execute on function public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text) to authenticated;   -- v0.22.0: + o vídeo
+grant execute on function public.radar_pauta_marcar_pronta(bigint, timestamptz, jsonb) to authenticated;   -- v0.120.0: + a liberação do administrador
+grant execute on function public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text, jsonb) to authenticated;   -- v0.22.0: + o vídeo; v0.120.0: + a liberação
 grant execute on function public.radar_pauta_desaprovar(bigint, boolean) to authenticated;
 grant execute on function public.radar_pauta_publicar_agora(bigint, boolean) to authenticated;
 grant execute on function public.radar_pauta_pode_copiar(bigint, timestamptz, text) to authenticated;
