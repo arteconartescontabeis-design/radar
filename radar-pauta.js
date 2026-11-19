@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.122.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.123.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -298,8 +298,8 @@ async function telaSemana(){
       <div class="selos">${selo(TIPOS_PAUTA[p.tipo] || p.tipo, "neutro")}${p.formato !== "nenhum" ? " " + selo(FORMATOS_PAUTA[p.formato] || p.formato, "neutro") : ""} ${seloPeca(p)}</div>
       ${p.assunto ? `<p class="sub pauta-assunto">${h(cortarPauta(p.assunto, 140))}</p>` : ""}
       ${quem.length ? `<p class="pauta-pessoas">${quem.map(t => `<span>${h(t.nome_na_peca)} ${seloTermo(t)}</span>`).join(" ")}</p>` : ""}
-      ${p.tipo === "noticia" ? `<p class="sub">Dia de notícia: publique por <button class="link" type="button" data-acao="aba" data-aba="assuntos">Assuntos</button> ou <button class="link" type="button" data-acao="aba" data-aba="publicacoes">Publicações</button>.</p>` : ""}
-      <div class="acoes"><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir</button>${adm ? `<button class="btn peq perigo" type="button" data-acao="pauta-apagar" data-id="${p.id}">Apagar</button>` : ""}${extra || ""}</div></article>`; };
+      ${p.tipo === "noticia" ? `<p class="sub">Dia de notícia: gere a publicação com IA aqui, ou publique por <button class="link" type="button" data-acao="aba" data-aba="assuntos">Assuntos</button> ou <button class="link" type="button" data-acao="aba" data-aba="publicacoes">Publicações</button>.</p>` : ""}
+      <div class="acoes"><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir</button>${ed && p.tipo === "noticia" ? `<button class="btn peq verde" type="button" data-acao="pauta-gerar-noticia" data-id="${p.id}">Gerar com IA</button>` : ""}${adm ? `<button class="btn peq perigo" type="button" data-acao="pauta-apagar" data-id="${p.id}">Apagar</button>` : ""}${extra || ""}</div></article>`; };
   const cartao = d => { const ps = porDia[d] || [];
     const formulario = novaAqui(d) && E.pauta.nova === d
       ? `<article class="pauta-dia nova${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3>${formNovaPeca(d, hoje)}</article>` : "";
@@ -1809,6 +1809,47 @@ const PAUTA = {
     async "pauta-apagar"(el){
       if(!confirm("Apagar esta peça da Pauta? Ela sai do calendário de vez, com o vídeo e os envios ainda não publicados. Não dá para desfazer. (A peça já publicada numa rede não é apagada — nela, use “Cancelar a peça”.)")) return;
       await rpc("radar_pauta_apagar", {p_id:Number(el.dataset.id)}); await desenhar(); recado("Peça apagada da Pauta.");
+    },
+    // v0.123.0: gerar a publicação da notícia com IA direto da Pauta. Procura uma captura/legislação com texto que combine com o
+    // assunto da peça; achando, abre o assunto a partir dela e roda o mesmo "Preparar com IA" (fonte, texto, imagem, conferência
+    // dos 10 critérios e legendas), levando ao passo "Conferir e aprovar". Sem legislação, pergunta se quer criar assim mesmo e
+    // abre o assunto para a equipe preparar a fonte — o Radar nunca inventa texto sem fonte conferida.
+    async "pauta-gerar-noticia"(el){
+      const [p] = await ler("radar_pauta_pecas", {select:"assunto,tipo", id:"eq." + Number(el.dataset.id)});
+      if(!p){ recado("Peça não encontrada (atualize a página).", true); return; }
+      const texto = (p.assunto || "").trim();
+      if(texto.length < 5){ recado("Escreva o assunto da notícia na peça antes de gerar (ao menos 5 letras).", "aviso"); return; }
+      const semAcento = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      const parar = new Set("para pela pelo pelos pelas sobre como nova novo nos nas dos das que com sem por sua seu seus suas uma uns este esta esse essa aquele aquela mais menos entre ano anos".split(" "));
+      const chaves = [...new Set(semAcento(texto).match(/[a-z0-9]{4,}/g) || [])].filter(w => !parar.has(w));
+      let achada = null;
+      if(chaves.length){
+        const capturas = await ler("radar_capturas", {select:"id,titulo,radar_fontes(oficial)", texto:"not.is.null", duplicata_de:"is.null",
+          order:"capturado_em.desc", limit:"200"});
+        achada = capturas.map(c => { const t = semAcento(c.titulo || "");
+            return {c, n:chaves.reduce((s, w) => s + (t.includes(w) ? 1 : 0), 0), of:c.radar_fontes?.oficial === true}; })
+          .filter(x => x.n >= 2)                                  // ao menos 2 palavras em comum, para não casar por acaso
+          .sort((a, b) => (b.of - a.of) || (b.n - a.n))[0]?.c || null;
+      }
+      if(achada){
+        if(!confirm(`Gerar a publicação com IA a partir de:\n\n“${achada.titulo}”\n\nLeva de 2 a 5 minutos e custa centavos; o texto cai no passo “Conferir e aprovar”. Nada é publicado sem a sua conferência.`)) return;
+        const aid = await rpc("radar_abrir_assunto", {p_captura:achada.id});
+        if(usosIA(aid) >= 1 && !(await pedirSenha())){ recado("Geração cancelada."); return; }
+        E.assunto = aid; E.aba = "assuntos"; E.etapa = null; window.scrollTo(0, 0); await desenhar();
+        let r;
+        try{ r = await prepararUmAssunto(aid, E.formato || "informativo", "foto", "foto",
+              passo => { IA_PASSO = passo; avisoIA("gerando a publicação da notícia"); }); }
+        finally{ IA_PASSO = ""; avisoIA(null); }
+        await desenhar();
+        if(r && r.pulado){ recado(`A notícia foi aberta, mas não deu para gerar sozinha (${r.motivo}). Confira a fonte e clique em “Preparar com IA”.`, "aviso"); return; }
+        if(r && !r.ok){ recado(`A notícia foi aberta, mas a IA não concluiu (${r.motivo || "erro"}). Tente “Preparar com IA” na tela do assunto.`, true); return; }
+        recado(`Publicação gerada pela IA${r && r.avisos ? ` (${r.avisos} ponto(s) a conferir)` : ""}. Confira no passo “Conferir e aprovar” — nada é publicado sem a conferência da equipe.`, r && r.avisos ? "aviso" : false);
+      }else{
+        if(!confirm(`Não encontrei legislação ou captura com texto que combine com:\n\n“${texto.slice(0, 120)}”\n\nDeseja criar a notícia sem legislação? Você abre o assunto e prepara a fonte antes de gerar.`)) return;
+        const [a] = await rest("POST", "radar_assuntos", {corpo:{titulo:texto.slice(0, 200), abrangencia:"geral", status:"selecionado"}, prefer:"return=representation"});
+        E.assunto = a.id; E.aba = "assuntos"; E.etapa = null; window.scrollTo(0, 0); await desenhar();
+        recado("Assunto criado sem legislação. Adicione o texto oficial (ou use “Verificar em fontes oficiais”) e clique em “Preparar com IA”.", "aviso");
+      }
     },
     async "pessoa-excluir"(el){
       if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça nem em vídeo do corretor ainda guardado (para tirá-la das próximas, desmarque “Ativa”; se ela retirou a autorização, clique em “Revogar termo”).")) return;
