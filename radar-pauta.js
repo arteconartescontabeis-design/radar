@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.124.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.125.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -1843,10 +1843,16 @@ const PAUTA = {
     // dos 10 critérios e legendas), levando ao passo "Conferir e aprovar". Sem legislação, pergunta se quer criar assim mesmo e
     // abre o assunto para a equipe preparar a fonte — o Radar nunca inventa texto sem fonte conferida.
     async "pauta-gerar-noticia"(el){
-      const [p] = await ler("radar_pauta_pecas", {select:"assunto,tipo", id:"eq." + Number(el.dataset.id)});
+      const [p] = await ler("radar_pauta_pecas", {select:"assunto,tipo,formato", id:"eq." + Number(el.dataset.id)});
       if(!p){ recado("Peça não encontrada (atualize a página).", true); return; }
       const texto = (p.assunto || "").trim();
       if(texto.length < 5){ recado("Escreva o assunto da notícia na peça antes de gerar (ao menos 5 letras).", "aviso"); return; }
+      // v0.125.0: respeita o FORMATO combinado na peça (carrossel/foto/reel) e o tamanho do texto que combina com ele — antes saía
+      // sempre foto e texto médio, por isso vinha curto e fora de carrossel
+      const ehCarrossel = p.formato === "carrossel" || p.formato === "carrossel_fotos";
+      const redesPeca = ehCarrossel ? "carrossel" : p.formato === "reel" ? "reel" : "foto";
+      const tamanhoPeca = ehCarrossel ? "artigo" : (E.formato || "informativo");
+      const comoSai = ehCarrossel ? "um CARROSSEL (texto longo — a IA escreve os cartões)" : redesPeca === "reel" ? "um reel" : "uma foto única";
       const semAcento = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
       const parar = new Set("para pela pelo pelos pelas sobre como nova novo nos nas dos das que com sem por sua seu seus suas uma uns este esta esse essa aquele aquela mais menos entre ano anos".split(" "));
       const chaves = [...new Set(semAcento(texto).match(/[a-z0-9]{4,}/g) || [])].filter(w => !parar.has(w));
@@ -1860,12 +1866,12 @@ const PAUTA = {
           .sort((a, b) => (b.of - a.of) || (b.n - a.n))[0]?.c || null;
       }
       if(achada){
-        if(!confirm(`Gerar a publicação com IA a partir de:\n\n“${achada.titulo}”\n\nLeva de 2 a 5 minutos e custa centavos; o texto cai no passo “Conferir e aprovar”. Nada é publicado sem a sua conferência.`)) return;
+        if(!confirm(`Gerar a publicação com IA a partir de:\n\n“${achada.titulo}”\n\nVai sair como ${comoSai}. Leva de 2 a 5 minutos e custa centavos; o texto cai no passo “Conferir e aprovar”. Nada é publicado sem a sua conferência.`)) return;
         const aid = await rpc("radar_abrir_assunto", {p_captura:achada.id});
         if(usosIA(aid) >= 1 && !(await pedirSenha())){ recado("Geração cancelada."); return; }
         E.assunto = aid; E.aba = "assuntos"; E.etapa = null; window.scrollTo(0, 0); await desenhar();
         let r;
-        try{ r = await prepararUmAssunto(aid, E.formato || "informativo", "foto", "foto",
+        try{ r = await prepararUmAssunto(aid, tamanhoPeca, "foto", redesPeca,
               passo => { IA_PASSO = passo; avisoIA("gerando a publicação da notícia"); }); }
         finally{ IA_PASSO = ""; avisoIA(null); }
         await desenhar();

@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.124.0"
+    assert pagina.inner_text(".versao") == "v0.125.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.124.0" and data == "19/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.125.0" and data == "19/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2460,7 +2460,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.124.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.125.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3389,7 +3389,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.124.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.125.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7395,6 +7395,24 @@ def test_pauta_gerar_noticia_com_captura_gera_a_publicacao_v123(pagina, limpo, o
     # o assunto nasceu da captura (ligado a ela) e tem um texto no passo "Conferir e aprovar"
     aid = db.execute("select assunto_id from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0]
     assert db.execute("select count(*) from radar_conteudos where assunto_id = %s and status = 'em_revisao'", (aid,)).fetchone()[0] >= 1
+
+
+def test_pauta_gerar_noticia_respeita_o_formato_carrossel_v125(pagina, limpo):
+    """v0.125.0: o "Gerar com IA" da Pauta respeita o FORMATO combinado na peça — uma peça de notícia em carrossel sai como
+    carrossel (texto longo), não como foto única (antes saía sempre foto e texto médio). O aviso diz o que vai sair."""
+    db = limpo
+    captura(db, titulo="Governo regulamenta a jornada de trabalho e o repouso semanal", url="https://x/jornada")
+    seg = semana_de_hoje()
+    d = (date.fromisoformat(seg) + timedelta(days=1)).isoformat()
+    peca_db(db, d, "noticia", "carrossel", assunto="Governo regulamenta a jornada de trabalho e o repouso semanal remunerado")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina, seg)
+    dialogos = []
+    pagina.on("dialog", lambda dlg: dialogos.append(dlg.message))        # observa a mensagem; a fixture aceita o diálogo
+    pagina.click(f".pauta-dia[data-dia='{d}'] [data-acao=pauta-gerar-noticia]")
+    pagina.wait_for_selector("#base-texto")                             # aceitou, abriu o assunto da captura
+    assert any("CARROSSEL" in m for m in dialogos), dialogos            # o aviso avisou que vai sair como carrossel
 
 
 def test_pauta_gerar_novas_pautas_com_ia_admin_adiciona_v124(pagina, limpo):

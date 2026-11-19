@@ -95,7 +95,7 @@ def test_setup_e_idempotente(db):
     assert db.execute("select frequencia_horas, ativo from radar_fontes where slug = 'pgfn-noticias'").fetchone() == (9, False)
     db.execute("update radar_fontes set frequencia_horas = 6, ativo = true where slug = 'pgfn-noticias'")
     reg = db.execute("select antes, depois from radar_instalacoes order by id desc limit 1").fetchone()
-    assert len(reg[0]) == 41 and len(reg[1]) == 41   # 2ª execução: já havia 41 antes (v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos; v0.34.0: + as 4 da aba Setor; v0.35.0: + as 3 das respostas)
+    assert len(reg[0]) == 42 and len(reg[1]) == 42   # 2ª execução: já havia 42 antes (v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos; v0.34.0: + as 4 da aba Setor; v0.35.0: + as 3 das respostas)
 
 
 def test_fontes_do_sql_espelham_o_json_do_robo(db):
@@ -113,7 +113,7 @@ def test_anonimo_nao_le_nada_do_radar(limpo):
     no_ar(limpo)
     tabelas = [r[0] for r in limpo.execute("""select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
                                              where n.nspname = 'public' and c.relkind in ('r', 'v') and c.relname like 'radar\\_%'""").fetchall()]
-    assert len(tabelas) == 50 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 41 tabelas e 9 visões (v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos; v0.35.0: + as 3 das respostas; v0.34.0: + as 4 da aba Setor; v0.32.0: + radar_vencimentos e radar_copias; v0.21.0: + radar_v_pauta_pessoas e radar_v_capas; v0.22.0: + radar_videos e radar_video_acessos; v0.29.0: + radar_lembretes)
+    assert len(tabelas) == 52 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 42 tabelas e 10 visões (v0.125.0: + radar_metricas e radar_v_horarios; v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos; v0.35.0: + as 3 das respostas; v0.34.0: + as 4 da aba Setor; v0.32.0: + radar_vencimentos e radar_copias; v0.21.0: + radar_v_pauta_pessoas e radar_v_capas; v0.22.0: + radar_videos e radar_video_acessos; v0.29.0: + radar_lembretes)
     with como("anon") as c:
         for tabela in tabelas:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
