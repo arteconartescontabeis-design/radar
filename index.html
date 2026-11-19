@@ -373,6 +373,10 @@ details.nova-pessoa{margin:0 0 16px} details.nova-pessoa summary{margin-bottom:8
 .dash-meter{background:#EEF1F5;border-radius:999px;height:16px;overflow:hidden;margin:8px 0 4px} .dash-meter span{display:block;height:100%;background:var(--ok);border-radius:999px}
 /* v0.48.0 (melhoria B): o balãozinho dos gráficos de linha — a faixa sensível por semana e o balão que segue o ponteiro */
 .g-faixa{cursor:crosshair}
+.heatmap{display:grid;grid-template-columns:34px repeat(24,minmax(13px,1fr));gap:2px;min-width:420px;align-items:center}
+.hm-cel{height:16px;border-radius:2px;background:transparent} .hm-cel.vazio{background:var(--linha);opacity:.2} .hm-cel.g-faixa:hover{outline:2px solid var(--marinho)}
+.hm-rot{font-size:.72rem;color:var(--marinho);white-space:nowrap} .hm-hora{font-size:.6rem;color:#5A636D;text-align:center;overflow:visible;white-space:nowrap}
+.hm-top{margin:4px 0 0;padding-left:18px} .hm-top li{margin:2px 0}
 .dash-tip{position:fixed;pointer-events:none;background:var(--marinho);color:#fff;border-radius:8px;padding:6px 10px;font-size:.78rem;line-height:1.3;transform:translate(-50%,calc(-100% - 10px));white-space:nowrap;max-width:92vw;box-shadow:0 4px 14px rgba(1,31,72,.25);z-index:50}
 .dash-tip[hidden]{display:none}
 /* v0.48.0 (melhoria A): a linha de datas do seletor "Período" */
@@ -481,21 +485,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.126.0"></script>
-<script src="radar-video.js?v=0.126.0"></script>
-<script src="radar-setor.js?v=0.126.0"></script>
-<script src="radar-respostas.js?v=0.126.0"></script>
+<script src="radar-pauta.js?v=0.127.0"></script>
+<script src="radar-video.js?v=0.127.0"></script>
+<script src="radar-setor.js?v=0.127.0"></script>
+<script src="radar-respostas.js?v=0.127.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.126.0";
+const VERSAO = "0.127.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.127.0", "19/11/2026", [
+    "<b>Melhores horários da Artecon no Painel</b>: um quadro novo mostra <b>quando a @arteconartescontabeis engaja mais</b> — um <b>mapa de calor</b> por dia da semana e hora (passe o mouse ou o dedo para ver o engajamento de cada faixa), a lista dos <b>horários de maior engajamento</b> e o <b>engajamento por formato</b> (foto, carrossel, reel). Os dados vêm das publicações da própria conta que a <b>aba Setor</b> já lê toda semana pela Meta — <b>sem coletor novo nem agendamento</b>. O engajamento é (curtidas + comentários) ÷ seguidores.",
+    "Administrador: a mudança é na TELA e no BANCO (uma função de leitura, radar_horarios_artecon; nenhuma tabela nova obrigatória). Rode o sql/radar-horarios-artecon-v0.127.0.sql (ou de novo o sql/radar-setup-v0.50.0.sql) e publique o index.html com os demais .js. O quadro aparece com dados assim que a aba Setor tiver a conta da Artecon (@arteconartescontabeis) com publicações lidas."]],
   ["0.126.0", "19/11/2026", [
     "<b>“Gerar com IA” também dentro da peça</b>: na aba Pauta, o botão de gerar a publicação da notícia aparecia só no <b>cartão do dia</b> (na visão da semana). Agora ele aparece <b>também ao abrir a peça</b>, ao lado de “Salvar” — mais fácil de achar. Ele continua só para peças do tipo <b>Notícia</b> e respeita o formato combinado (carrossel/foto). Se houver alteração não salva na peça, ele pede para salvar antes.",
     "Administrador: a mudança é só na TELA (index.html + os .js juntos). Nada muda no banco. Publique tudo junto e aperte Ctrl+F5."]],
@@ -1758,6 +1765,41 @@ function blocoDashboard(hoje, c, graf, cota, polim){
     <div class="acoes"><button class="btn peq sec" type="button" data-acao="aba" data-aba="pauta">Abrir a Pauta</button></div></div>`;
 }
 
+// v0.127.0: os MELHORES HORÁRIOS da Artecon (dashboard). Vem de radar_horarios_artecon (as publicações da conta própria já
+// coletadas pela aba Setor). Um mapa de calor dia × hora (passar o mouse mostra o balãozinho, como os outros gráficos — .g-faixa),
+// os horários de maior engajamento e o engajamento por formato. Sem dados, convida a ligar a conta na aba Setor.
+const DIAS_SEMANA_CURTO = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const ROTULO_FORMATO_SETOR = {foto: "Foto", carrossel: "Carrossel", reel: "Reel", video: "Vídeo"};
+function blocoHorarios(d){
+  if(!d) return "";                                                  // banco antigo (função não existe) ou erro: não mostra nada
+  const pct = v => (Number(v) * 100).toFixed(2).replace(".", ",") + "%";
+  if(!d.total_posts){
+    return `<div class="painel" id="dash-horarios"><h2>Melhores horários da Artecon</h2>
+      <p class="sub">Ainda não há publicações da conta da Artecon coletadas. ${ehAdmin()
+        ? `Adicione a conta <b>@arteconartescontabeis</b> na aba <button class="link" type="button" data-acao="aba" data-aba="setor">Setor</button> e clique em “Atualizar a análise”.`
+        : "O administrador precisa ligar a leitura da conta da Artecon na aba Setor."} Os melhores horários aparecem aqui assim que houver dados.</p></div>`;
+  }
+  const mapa = {}; let max = 0;
+  for(const x of (d.por_hora || [])){ (mapa[x.dia_semana] ||= {})[x.hora] = x; if(x.engajamento_medio > max) max = Number(x.engajamento_medio); }
+  const horas = Array.from({length: 24}, (_, hh) => hh);
+  const cel = (dia, hora) => { const x = mapa[dia]?.[hora];
+    if(!x) return `<div class="hm-cel vazio"></div>`;
+    const alpha = max ? Math.max(0.14, Number(x.engajamento_medio) / max) : 0.14;
+    return `<div class="hm-cel g-faixa" data-tip="${h(`${DIAS_SEMANA_CURTO[dia]} ${hora}h — engajamento ${pct(x.engajamento_medio)} · ${x.posts} publicação(ões)`)}" style="background:rgba(220,163,58,${alpha.toFixed(2)})"></div>`; };
+  const cabHoras = `<div class="hm-rot"></div>${horas.map(hh => `<div class="hm-hora">${hh % 3 === 0 ? hh + "h" : ""}</div>`).join("")}`;
+  const linha = dia => `<div class="hm-rot">${DIAS_SEMANA_CURTO[dia]}</div>${horas.map(hh => cel(dia, hh)).join("")}`;
+  const melhores = (d.melhores || []).slice(0, 6);
+  const fmt = (d.por_formato || []).filter(g => g.formato && g.engajamento_medio != null);
+  const maxF = Math.max(1e-9, ...fmt.map(g => Number(g.engajamento_medio) || 0));
+  return `<div class="painel" id="dash-horarios"><h2>Melhores horários da Artecon</h2>
+    <p class="sub">De ${d.total_posts} publicações da <b>@arteconartescontabeis</b> nos últimos ${d.dias} dias (leitura da aba Setor). Engajamento = (curtidas + comentários) ÷ seguidores. Passe o mouse (ou o dedo) nas células.</p>
+    <div class="rolagem"><div class="heatmap">${cabHoras}${[0, 1, 2, 3, 4, 5, 6].map(linha).join("")}</div></div>
+    ${melhores.length ? `<h3 style="margin:14px 0 4px">Horários de maior engajamento</h3>
+      <ul class="hm-top">${melhores.map(m => `<li><b>${DIAS_SEMANA_CURTO[m.dia_semana]}, ${m.hora}h</b> — ${pct(m.engajamento_medio)} <span class="sub">(${m.posts} publicação(ões))</span></li>`).join("")}</ul>` : ""}
+    ${fmt.length ? `<h3 style="margin:14px 0 4px">Engajamento por formato</h3>
+      ${fmt.map(g => `<div class="dash-barh"><span class="dash-bar-rot">${h(ROTULO_FORMATO_SETOR[g.formato] || g.formato)}</span><span class="dash-barh-fill" style="width:${Math.round((Number(g.engajamento_medio) || 0) / maxF * 100)}%" title="${h(pct(g.engajamento_medio))}"></span><span class="dash-bar-val">${pct(g.engajamento_medio)} · ${g.posts}</span></div>`).join("")}` : ""}</div>`;
+}
+
 /* ----------------------------------------------------------------- telas */
 const TELAS = {
   async painel(){
@@ -1769,8 +1811,9 @@ const TELAS = {
     const proj = temPauta ? await lerCronograma(segundaDe(hoje), hoje).catch(() => null) : null;
     // v0.47.0: os dados dos gráficos (sem o banco novo, a função não existe: o Painel abre sem os gráficos). A cota do corretor é só
     // do editor/administrador; o leitor vê o resto.
-    let graf = null, cota = null, polim = null;
+    let graf = null, cota = null, polim = null, horarios = null;
     try{ graf = await rpc("radar_painel_graficos", {p_hoje: hoje || null}); }catch(e){ graf = null; }
+    try{ horarios = await rpc("radar_horarios_artecon", {p_dias: 180}); }catch(e){ horarios = null; }   // v0.127.0: melhores horários da Artecon
     if(podeEditar()){ try{ cota = await rpc("radar_video_cota"); }catch(e){ cota = null; }
                       try{ polim = await rpc("radar_polimento_cota"); }catch(e){ polim = null; } }
     const fontes = await ler("radar_v_saude_fontes", {select:"*", ativo:"eq.true", saude:"neq.ok", order:"slug"});
@@ -1792,6 +1835,7 @@ const TELAS = {
         ? " (a lista inteira fica em Configurações → Agenda de obrigações)" : ""}</p>` : ""}</div>` : "";
     return `<h1>Painel do dia</h1>${parada}
       ${blocoDashboard(hoje, proj, graf, cota, polim)}
+      ${blocoHorarios(horarios)}
       ${prorrogacao}
       <div class="cartoes">
         ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}

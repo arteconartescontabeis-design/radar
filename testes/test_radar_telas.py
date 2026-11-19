@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.126.0"
+    assert pagina.inner_text(".versao") == "v0.127.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.126.0" and data == "19/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.127.0" and data == "19/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2460,7 +2460,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.126.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.127.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3389,7 +3389,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.126.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.127.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -8029,6 +8029,36 @@ def test_dashboard_no_painel_com_banco_e_leitor(pagina, limpo):
     assert "Publicações por canal" in pagina.inner_text("#painel-dashboard")           # os gráficos (RPC própria) continuam
     pagina.screenshot(path=str(FOTOS / "76-painel-dashboard-erro.png"), full_page=True)
     pagina.unroute("**/rest/v1/radar_capturas*")
+
+
+def test_painel_melhores_horarios_da_artecon_v127(pagina, limpo):
+    """v0.127.0: o Painel ganhou o quadro "Melhores horários da Artecon" — mapa de calor dia × hora (com o balãozinho ao passar o
+    mouse) e a lista dos horários de maior engajamento — a partir das publicações da conta própria lidas pela aba Setor."""
+    db = limpo
+    s = db.execute("insert into radar_setor_setores (nome) values ('Contabilidade') returning id").fetchone()[0]
+    c = db.execute("insert into radar_setor_contas (setor_id, nome, propria, ativa) values (%s,'arteconartescontabeis',true,true) returning id", (s,)).fetchone()[0]
+    db.execute("""insert into radar_setor_posts (conta_id, midia_id, publicado_em, tipo, curtidas, comentarios, seguidores) values
+        (%s,'m1','2026-11-10 10:00:00-03','IMAGE',100,20,1000),
+        (%s,'m2','2026-11-17 10:30:00-03','CAROUSEL_ALBUM',140,20,1000)""", (c, c))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    painel = pagina.locator("#dash-horarios")
+    painel.wait_for()
+    assert painel.locator(".heatmap").count() == 1
+    assert "Ter, 10h" in painel.inner_text() and "@arteconartescontabeis" in painel.inner_text()
+    # passar o mouse numa célula do mapa mostra o balãozinho (mesmo mecanismo dos outros gráficos)
+    pagina.hover("#dash-horarios .heatmap .g-faixa")
+    pagina.wait_for_selector("#dash-tip:not([hidden])")
+    assert "engajamento" in pagina.inner_text("#dash-tip")
+
+
+def test_painel_horarios_sem_dados_convida_a_ligar_a_conta_v127(pagina, limpo):
+    """v0.127.0: sem publicações da conta da Artecon, o quadro convida o administrador a ligar a conta na aba Setor."""
+    limpo.execute("delete from radar_setor_posts")                     # garante que não há publicações da conta própria
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    txt = pagina.inner_text("#dash-horarios")
+    assert "Ainda não há publicações da conta da Artecon" in txt and "Setor" in txt
 
 
 def test_selo_com_motivo_longo_cabe_no_celular(pagina, pauta):

@@ -471,7 +471,8 @@ drop function if exists public.radar_foto_acervo_apagar(bigint);
 -- v0.72.0: a foto da notícia e o rodízio do acervo (as colunas saem com as tabelas, acima)
 drop function if exists public.radar_assunto_foto(bigint);
 drop function if exists public.radar_assunto_foto_gravar(bigint, bigint);
--- v0.125.0: as métricas das redes e os melhores horários (a tabela sai mais abaixo, com as demais)
+-- v0.125.0/v0.127.0: as métricas das redes e os melhores horários (a tabela radar_metricas sai mais abaixo, com as demais)
+drop function if exists public.radar_horarios_artecon(int);
 drop function if exists public.radar_horarios_resumo(text, int);
 drop function if exists public.radar_metricas_gravar(jsonb);
 drop view if exists public.radar_v_horarios;

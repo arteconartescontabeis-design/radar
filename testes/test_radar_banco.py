@@ -536,8 +536,8 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_pessoa_assinar_termo', 'radar_pessoa_revogar_termo',
                                                            -- v0.47.0: os dados dos gráficos do Painel (a função confere o perfil, por dentro; é só leitura)
                                                            'radar_painel_graficos',
-                                                           -- v0.125.0: os melhores horários (a função confere o perfil, por dentro; é só leitura)
-                                                           'radar_horarios_resumo',
+                                                           -- v0.125.0/v0.127.0: os melhores horários (a função confere o perfil, por dentro; é só leitura)
+                                                           'radar_horarios_resumo', 'radar_horarios_artecon',
                                                            -- v0.63.0: o acervo de fotos da Artecon (as duas conferem o papel, por dentro)
                                                            'radar_foto_acervo_gravar', 'radar_foto_acervo_apagar',
                                                            -- v0.72.0: a foto da notícia (as duas conferem o papel, por dentro)
@@ -3940,6 +3940,31 @@ def test_metricas_so_o_coletor_grava_e_o_resumo_traz_os_melhores_horarios(db):
         with pytest.raises(Exception) as e:
             c.execute("select radar_horarios_resumo(null, 90)")
     assert "RADAR382" in str(e.value)
+
+
+def test_horarios_da_artecon_sai_dos_posts_da_conta_propria(db):
+    """v0.127.0: radar_horarios_artecon lê as publicações da conta PRÓPRIA da Artecon (coletadas pela aba Setor) e devolve o
+    engajamento por dia/hora e os melhores horários; perfil nenhum não vê."""
+    s = db.execute("insert into radar_setor_setores (nome) values ('Contabilidade') returning id").fetchone()[0]
+    c = db.execute("insert into radar_setor_contas (setor_id, nome, propria, ativa) values (%s, 'arteconartescontabeis', true, true) returning id",
+                   (s,)).fetchone()[0]
+    db.execute("""insert into radar_setor_posts (conta_id, midia_id, publicado_em, tipo, curtidas, comentarios, seguidores) values
+        (%s, 'm1', '2026-11-10 10:00:00-03', 'IMAGE', 100, 20, 1000),
+        (%s, 'm2', '2026-11-17 10:30:00-03', 'CAROUSEL_ALBUM', 140, 20, 1000),
+        (%s, 'm3', '2026-11-16 20:00:00-03', 'IMAGE', 10, 2, 1000)""", (c, c, c))
+    with como("authenticated", EDITOR) as cx:
+        r = cx.execute("select radar_horarios_artecon(365)").fetchone()[0]
+    assert r["total_posts"] == 3
+    # terça (dia_semana 2), 10h, 2 posts — engajamento médio (0,12 + 0,16)/2 = 0,14 → é o melhor horário
+    mel = r["melhores"]
+    assert mel and mel[0]["dia_semana"] == 2 and mel[0]["hora"] == 10 and mel[0]["posts"] == 2
+    assert abs(float(mel[0]["engajamento_medio"]) - 0.14) < 1e-6
+    fmts = {g["formato"] for g in r["por_formato"]}
+    assert "carrossel" in fmts and "foto" in fmts
+    with como("authenticated", "00000000-0000-0000-0000-0000000000ff") as cx:   # perfil nenhum não vê
+        with pytest.raises(Exception) as e:
+            cx.execute("select radar_horarios_artecon(365)")
+    assert "RADAR383" in str(e.value)
 
 
 def pessoa_do_corretor(db, nome="Ana Teste", na_peca="Ana", **campos):
