@@ -45,7 +45,7 @@ def aprovar(conteudo, uid=EDITOR):
 def test_instalacao_cria_19_tabelas_com_rls(db):
     linhas = db.execute("""select c.relname, c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
                            where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\\_%'""").fetchall()
-    assert len(linhas) == 41       # v0.63.0: + radar_fotos_acervo (as fotos da Artecon para as capas); v0.60.0: + radar_venda_roteiros (a biblioteca dos vídeos de venda); v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos (o histórico das assinaturas do termo de imagem); v0.35.0: + radar_respostas_gatilhos, radar_respostas_registro e radar_respostas_contas; v0.34.0: + radar_setor_setores, radar_setor_contas, radar_setor_posts e radar_setor_coletas; v0.32.0: + radar_vencimentos e radar_copias; v0.29.0: + radar_lembretes; v0.22.0: + radar_videos e radar_video_acessos; v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
+    assert len(linhas) == 42       # v0.125.0: + radar_metricas (o engajamento dos posts, para os melhores horários); v0.63.0: + radar_fotos_acervo (as fotos da Artecon para as capas); v0.60.0: + radar_venda_roteiros (a biblioteca dos vídeos de venda); v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos (o histórico das assinaturas do termo de imagem); v0.35.0: + radar_respostas_gatilhos, radar_respostas_registro e radar_respostas_contas; v0.34.0: + radar_setor_setores, radar_setor_contas, radar_setor_posts e radar_setor_coletas; v0.32.0: + radar_vencimentos e radar_copias; v0.29.0: + radar_lembretes; v0.22.0: + radar_videos e radar_video_acessos; v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
     assert all(rls for _, rls in linhas), [n for n, rls in linhas if not rls]
 
 
@@ -536,6 +536,8 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_pessoa_assinar_termo', 'radar_pessoa_revogar_termo',
                                                            -- v0.47.0: os dados dos gráficos do Painel (a função confere o perfil, por dentro; é só leitura)
                                                            'radar_painel_graficos',
+                                                           -- v0.125.0: os melhores horários (a função confere o perfil, por dentro; é só leitura)
+                                                           'radar_horarios_resumo',
                                                            -- v0.63.0: o acervo de fotos da Artecon (as duas conferem o papel, por dentro)
                                                            'radar_foto_acervo_gravar', 'radar_foto_acervo_apagar',
                                                            -- v0.72.0: a foto da notícia (as duas conferem o papel, por dentro)
@@ -1287,9 +1289,9 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (41, 13, 8, 11, 1, 0)         # v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e "termo_imagem"; v0.57.0: + radar_polimento_uso e "polimento"
+        assert _resumo("radar_sem_tx") == (42, 13, 8, 11, 1, 0)         # v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e "termo_imagem"; v0.57.0: + radar_polimento_uso e "polimento"
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.50.0", [], 41)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.50.0", [], 42)
             # v0.31.0 (revisão): na instalação nova as fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
             # já roda o diagnóstico dela pelo GitHub), e o LEIAME ("Fontes iniciais") diz isso. v0.106.0: 6 + 4 feeds de classe = 10
             assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (13, True)
@@ -1316,14 +1318,14 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (41, 13, 8, 11, 2, 0)
+        assert _resumo("radar_parcial") == (42, 13, 8, 11, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
             assert c.execute("""select (select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from information_schema.column_privileges where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from pg_policies where schemaname = 'public' and 'anon' = any(roles))""").fetchone()[0] == 0
-            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (41,)]     # a v0.4 tinha 20; v0.63.0: + radar_fotos_acervo; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0), radar_videos e radar_video_acessos (v0.22.0), radar_lembretes (v0.29.0), radar_vencimentos e radar_copias (v0.32.0), as 4 da aba Setor (v0.34.0), as 3 das respostas (v0.35.0), radar_pessoas_termos (v0.46.0), radar_polimento_uso (v0.57.0), radar_venda_roteiros (v0.60.0)
+            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (42,)]     # a v0.4 tinha 20; v0.125.0: + radar_metricas; v0.63.0: + radar_fotos_acervo; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0), radar_videos e radar_video_acessos (v0.22.0), radar_lembretes (v0.29.0), radar_vencimentos e radar_copias (v0.32.0), as 4 da aba Setor (v0.34.0), as 3 das respostas (v0.35.0), radar_pessoas_termos (v0.46.0), radar_polimento_uso (v0.57.0), radar_venda_roteiros (v0.60.0)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_parcial with (force)")
@@ -1343,7 +1345,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (41, 13, 8, 11, 1, 1)       # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (42, 13, 8, 11, 1, 1)       # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -3902,6 +3904,42 @@ def test_pauta_apagar_so_admin_e_barra_a_ja_publicada(pauta):
             c.execute("select radar_pauta_apagar(%s)", (outra,))
     assert "RADAR362" in str(e.value)
     assert db.execute("select count(*) from radar_pauta_pecas where id=%s", (outra,)).fetchone()[0] == 1
+
+
+def test_metricas_so_o_coletor_grava_e_o_resumo_traz_os_melhores_horarios(db):
+    """v0.125.0: só o coletor (service_role) grava as métricas (radar_metricas_gravar); item sem post_id é pulado; o upsert
+    atualiza por canal+post. A equipe lê radar_horarios_resumo (baldes por hora + melhores horários, ao menos 2 posts no balde);
+    perfil nenhum não vê."""
+    with como("authenticated", EDITOR) as c:                              # editor não grava métricas (nem tem permissão na função)
+        with pytest.raises(Exception) as e:
+            c.execute("select radar_metricas_gravar('[]'::jsonb)")
+    assert "permission denied" in str(e.value)
+    lote = json.dumps([
+        {"canal": "instagram", "post_id": "A", "publicado_em": "2026-11-10T13:00:00-03:00", "engajamento": 100, "alcance": 1000},
+        {"canal": "instagram", "post_id": "B", "publicado_em": "2026-11-17T13:00:00-03:00", "engajamento": 200, "alcance": 1200},
+        {"canal": "facebook",  "post_id": "C", "publicado_em": "2026-11-11T19:00:00-03:00", "engajamento": 50,  "alcance": 500},
+        {"canal": "instagram", "post_id": "",  "publicado_em": "2026-11-10T13:00:00-03:00"}])          # sem post_id: pulado
+    with como("service_role") as c:
+        n = c.execute("select radar_metricas_gravar(%s::jsonb)", (lote,)).fetchone()[0]
+    assert n == 3 and db.execute("select count(*) from radar_metricas").fetchone()[0] == 3
+    with como("service_role") as c:                                       # upsert: A com novo engajamento, sem duplicar
+        c.execute("select radar_metricas_gravar(%s::jsonb)", (json.dumps(
+            [{"canal": "instagram", "post_id": "A", "publicado_em": "2026-11-10T13:00:00-03:00", "engajamento": 160, "alcance": 1000}]),))
+    assert db.execute("select count(*) from radar_metricas").fetchone()[0] == 3
+    assert db.execute("select engajamento from radar_metricas where post_id='A'").fetchone()[0] == 160
+    with como("authenticated", EDITOR) as c:                              # a equipe lê o resumo
+        r = c.execute("select radar_horarios_resumo(null, 90)").fetchone()[0]
+    assert r["total_posts"] == 3
+    # terça 13h (2026-11-10 e 11-17) tem 2 posts, média (160+200)/2 = 180 → é o melhor horário
+    mel = r["melhores"]
+    assert mel and mel[0]["dia_semana"] == 2 and mel[0]["hora"] == 13 and mel[0]["posts"] == 2 and mel[0]["engajamento_medio"] == 180
+    with como("authenticated", EDITOR) as c:                              # filtra por canal
+        rf = c.execute("select radar_horarios_resumo('facebook', 90)").fetchone()[0]
+    assert rf["total_posts"] == 1 and rf["canal"] == "facebook"
+    with como("authenticated", "00000000-0000-0000-0000-0000000000ff") as c:   # perfil nenhum não vê
+        with pytest.raises(Exception) as e:
+            c.execute("select radar_horarios_resumo(null, 90)")
+    assert "RADAR382" in str(e.value)
 
 
 def pessoa_do_corretor(db, nome="Ana Teste", na_peca="Ana", **campos):

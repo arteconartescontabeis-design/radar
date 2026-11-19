@@ -140,6 +140,7 @@ exception when others then null;
 end $$;
 
 drop table if exists
+  public.radar_metricas,         -- v0.125.0 (o engajamento dos posts; sai antes de radar_redes_envios, que ela referencia)
   public.radar_fotos_acervo,     -- v0.63.0 (o acervo de fotos da Artecon; sai antes de radar_imagens e de radar_papel)
   public.radar_venda_roteiros,   -- v0.60.0 (a biblioteca dos vídeos de venda)
   public.radar_polimento_uso,    -- v0.57.0 (corretor de polimento)
@@ -470,6 +471,10 @@ drop function if exists public.radar_foto_acervo_apagar(bigint);
 -- v0.72.0: a foto da notícia e o rodízio do acervo (as colunas saem com as tabelas, acima)
 drop function if exists public.radar_assunto_foto(bigint);
 drop function if exists public.radar_assunto_foto_gravar(bigint, bigint);
+-- v0.125.0: as métricas das redes e os melhores horários (a tabela sai mais abaixo, com as demais)
+drop function if exists public.radar_horarios_resumo(text, int);
+drop function if exists public.radar_metricas_gravar(jsonb);
+drop view if exists public.radar_v_horarios;
 
 commit;
 
