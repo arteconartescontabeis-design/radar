@@ -147,7 +147,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.120.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.50.0', v_antes);
 end $$;
 
 -- v0.43.0: a faxina das sobras da instalação por partes da v0.42.0 (feita pelo assistente em 20/10, por etapas pequenas:
@@ -3842,6 +3842,7 @@ revoke all on function public.radar_pauta_bloqueios(bigint, text[], date) from p
 -- "Salvar e marcar como pronta": a peça em produção, sem nenhum problema, fica pronta para o administrador aprovar.
 -- v0.120.0: com p_liberacao (só o administrador), os pontos liberáveis são ignorados e a liberação fica registrada (motivo, quem, quando).
 -- Devolve a nova versão da peça (atualizado_em), para a tela.
+drop function if exists public.radar_pauta_marcar_pronta(bigint, timestamptz);   -- v0.120.0: a assinatura ganhou p_liberacao
 create or replace function public.radar_pauta_marcar_pronta(p_peca bigint, p_lido timestamptz, p_liberacao jsonb default null) returns timestamptz
 language plpgsql security definer set search_path = public as $$
 declare

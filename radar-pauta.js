@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.119.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.120.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -1095,6 +1095,21 @@ function mostrarConferencia(r, titulo){
     (r.avisos.length ? `<div class="aviso alerta"><b>Para conferir:</b><ul class="pauta-erros">${r.avisos.map(t => `<li>${h(t)}</li>`).join("")}</ul></div>` : "");
   box.hidden = false; box.scrollIntoView({block:"nearest"});
 }
+/* v0.120.0: as travas que o ADMINISTRADOR pode liberar com responsabilidade (publicidade/CFC e número sem fonte) — quando o app
+   entende errado (ex.: “promoção” é a data Black Friday, não uma oferta do escritório). O resto (termo de pessoa, estrutura,
+   plataforma, identificação legal, [VERIFICAR], boletim pago) NUNCA libera: é verdade/legalidade, não tom de propaganda. */
+const TRAVA_LIBERAVEL = /^(Troque antes de |Precisa regravar: |Números que não estão nas informações conferidas)/;
+const bloqueiosDe  = travas => travas.filter(t => !TRAVA_LIBERAVEL.test(t));
+const liberaveisDe = travas => travas.filter(t =>  TRAVA_LIBERAVEL.test(t));
+/* Pede o motivo da liberação ao administrador (fica registrado no banco). Devolve {motivo, pontos} ou null (cancelou/sem motivo). */
+function pedirLiberacao(libera, acao){
+  if(!ehAdmin()){ recado(`Há ${libera.length} ponto(s) de publicidade que só o administrador pode liberar: peça ao administrador para ${acao}.`, true); return null; }
+  const motivo = (prompt(`Publicar assim mesmo, sob a sua responsabilidade de administrador?\n\n` +
+    `A publicidade contábil informa, não vende — mas às vezes o app entende errado. Estes pontos serão liberados e o registro fica guardado (quem, quando, o motivo):\n\n- ` +
+    libera.join("\n- ") + `\n\nEscreva o motivo da liberação:`, "") || "").trim();
+  if(motivo.length < 3){ if(motivo !== "") recado("Escreva um motivo com ao menos 3 caracteres.", true); else recado("Liberação cancelada.", true); return null; }
+  return {motivo, pontos:libera};
+}
 /* O dia e a hora da peça como a confirmação mostra: "sáb, 31/10/2026, às 09:30" (de Brasília) */
 const quandoPeca = (data, hora) => `${dataCurta(data)}/${data.slice(0, 4)}, às ${String(hora).slice(0, 5)}`;
 const passouDaHora = (data, hora) => Date.parse(`${data}T${String(hora).slice(0, 5)}:00-03:00`) < Date.now();     // Brasília: sem horário de verão
@@ -1595,9 +1610,13 @@ const PAUTA = {
       const f = $("form[data-form=peca]"); if(!f || f.dataset.id !== f0.dataset.id) return;
       const r = await conferirPecaTela(f, null, await artesDaTela());
       mostrarConferencia(r, "O que falta para a peça ficar pronta");
-      if(r.travas.length){ recado(`${salvou ? "Peça salva, mas ainda não" : "A peça ainda não"} fica pronta: há ${r.travas.length} ponto(s) a resolver (a lista está na peça).`, true); return; }
-      await rpc("radar_pauta_marcar_pronta", {p_peca:Number(f.dataset.id), p_lido:f.dataset.lido});
-      await desenhar(); recado("Peça pronta: falta o administrador aprovar (Pauta → Prontas para aprovar).");
+      // v0.120.0: só o administrador libera; para o editor, os pontos liberáveis continuam travando (ele resolve ou chama o admin)
+      const libera = ehAdmin() ? liberaveisDe(r.travas) : [], bloq = ehAdmin() ? bloqueiosDe(r.travas) : r.travas;
+      if(bloq.length){ recado(`${salvou ? "Peça salva, mas ainda não" : "A peça ainda não"} fica pronta: há ${bloq.length} ponto(s) a resolver (a lista está na peça).`, true); return; }
+      let liberacao = null;
+      if(libera.length){ liberacao = pedirLiberacao(libera, "deixá-la pronta"); if(!liberacao) return; }
+      await rpc("radar_pauta_marcar_pronta", {p_peca:Number(f.dataset.id), p_lido:f.dataset.lido, ...(liberacao ? {p_liberacao:liberacao} : {})});
+      await desenhar(); recado(liberacao ? "Peça pronta com a sua liberação de administrador (registrada): falta aprovar." : "Peça pronta: falta o administrador aprovar (Pauta → Prontas para aprovar).");
       if(r.avisos.length) mostrarConferencia(r, "Pronta. Para conferir antes da aprovação");
     },
     /* Aprovar (só o administrador): tudo salvo; as caixas; a conferência do banco e da tela sem nada a resolver; a confirmação com o dia
@@ -1616,7 +1635,11 @@ const PAUTA = {
       if(E.pauta.aberta?.formato === "reel" && typeof videoParaAprovar !== "function") throw new ErroApi("O arquivo radar-video.js (o corretor de vídeo) não carregou: aperte Ctrl+F5.");
       const sha = E.pauta.aberta?.formato === "reel" ? videoParaAprovar() : null;
       const artes = await artesDaTela(), r = await conferirPecaTela(f, canais, artes);
-      if(r.travas.length){ mostrarConferencia(r, "O que falta para aprovar"); recado(`Há ${r.travas.length} ponto(s) a resolver antes de aprovar: a lista está na peça.`, true); return; }
+      const bloq = bloqueiosDe(r.travas), libera = liberaveisDe(r.travas);
+      if(r.travas.length) mostrarConferencia(r, bloq.length ? "O que falta para aprovar" : "Pontos de publicidade (o administrador pode liberar com responsabilidade)");
+      if(bloq.length){ recado(`Há ${bloq.length} ponto(s) a resolver antes de aprovar: a lista está na peça.`, true); return; }
+      let liberacao = null;
+      if(libera.length){ liberacao = pedirLiberacao(libera, "aprovar"); if(!liberacao) return; }
       const a = E.pauta.aberta, nomes = canais.map(k => NOME_REDE[k]).join(" e no "), ag = await rpc("radar_agenda_situacao").catch(() => ({}));
       const pergunta = modo === "agendar"
         ? `Vai ao ar exatamente o que está na tela, no ${nomes}, em ${quandoPeca(a.data, a.hora)} (horário de Brasília).` +
@@ -1633,7 +1656,7 @@ const PAUTA = {
         ids.push(nova.id);
       }
       const res = await rpc("radar_pauta_aprovar", {p_peca:Number(f.dataset.id), p_lido:f.dataset.lido, p_canais:canais, p_modo:modo, p_artes:ids,
-        p_arte_identificacao:linhaIdentificacao(), p_conferencias:caixas.map(c => c.value), ...(sha ? {p_video_sha256:sha} : {})});
+        p_arte_identificacao:linhaIdentificacao(), p_conferencias:caixas.map(c => c.value), ...(sha ? {p_video_sha256:sha} : {}), ...(liberacao ? {p_liberacao:liberacao} : {})});
       await desenhar();
       recado(modo === "agendar" ? `Peça aprovada: sai no ${nomes} em ${horaBrasilia(res?.agendado_para)} (Brasília).` +
           (agendaParada(ag) ? " A agenda automática está desligada: no dia, use Publicar agora." : "")

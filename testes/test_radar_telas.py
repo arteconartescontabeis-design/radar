@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.119.0"
+    assert pagina.inner_text(".versao") == "v0.120.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.119.0" and data == "18/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.120.0" and data == "19/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2460,7 +2460,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.119.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.120.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3349,7 +3349,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.119.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.120.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -9118,30 +9118,30 @@ def test_peca_aprovar_so_admin_guarda_as_laminas_e_mostra_hora_e_agenda_desligad
     pagina.wait_for_selector("#peca-aprovar")
 
 
-def test_peca_aprovar_trava_termo_de_promocao_e_comparacao(pagina, pauta):
-    """v0.21.0: na Pauta, os termos que a publicidade da profissão contábil não usa travam a aprovação, dizendo onde estão: os de
-    TERMOS_PECA (promoção, comparação, superlativo…) e as travas da lista compartilhada (“blinde seu patrimônio”). Nada é guardado, nada é
-    perguntado e a peça continua pronta. O banco não conhece essa lista: a peça ficou pronta por ele."""
+def test_peca_aprovar_termo_de_publicidade_o_admin_libera_com_motivo(pagina, pauta):
+    """v0.120.0: os termos de publicidade do CFC (promoção, comparação, superlativo, “blinde seu patrimônio”…) não TRAVAM mais a
+    aprovação do ADMINISTRADOR — viram uma LIBERAÇÃO. A tela os mostra como liberáveis (“Pontos de publicidade…”), pede o MOTIVO num
+    prompt, confirma, aprova a peça e registra a liberação (motivo, quem, quando). O editor não vê essa opção (testado no banco)."""
     db = pauta
     pid = nova_peca(db, dias=4, tipo="captacao", formato="imagem", chamada="O melhor atendimento de Palhoça",
                     legenda_instagram="Promoção de primavera: diferente dos outros escritórios, a Artecon explica cada guia.\n\n" + IDENT,
                     legenda_facebook="Blinde seu patrimônio: conheça a Artecon.\n\n" + IDENT)
     marcar_pronta(db, pid)
-    mensagens = []
-    pagina.on("dialog", lambda d: mensagens.append(d.message))
+    dialogos = []
+    def responder(d):
+        dialogos.append(d.message)
+        d.accept("“promoção” é a data Black Friday, não uma oferta do escritório") if "Publicar assim mesmo" in d.message else d.accept()
+    pagina.on("dialog", responder)
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     abrir_peca(pagina, pid, data_peca(db, pid))
     pagina.wait_for_function(ARTES_PRONTAS)
-    imagens = db.execute("select count(*) from radar_imagens").fetchone()[0]
     aprovar_na_tela(pagina, ["pessoas"])
-    pagina.wait_for_selector("#recado .erro >> text=Há 1 ponto(s) a resolver antes de aprovar: a lista está na peça.")
-    [trava] = pagina.locator("#peca-conferencia .aviso.erro li").all_inner_texts()
-    assert trava.startswith("Troque antes de aprovar: “promoção”, “diferente dos outros” na legenda do Instagram; “blinde seu patrimônio” na legenda do "
-                            "Facebook; “o melhor” na chamada da arte. A publicidade da profissão contábil informa, não vende"), trava
-    assert mensagens == [] and db.execute("select count(*) from radar_imagens").fetchone()[0] == imagens
-    assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "pronta"
-    assert db.execute("select count(*) from radar_redes_envios where peca_id = %s", (pid,)).fetchone()[0] == 0
+    pagina.wait_for_selector("#recado >> text=Peça aprovada")
+    assert any("Publicar assim mesmo" in m for m in dialogos) and any("“promoção”" in m for m in dialogos), dialogos
+    s, l = db.execute("select situacao, liberacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()
+    assert s == "aprovada" and l["motivo"].startswith("“promoção” é a data") and l["por"] is not None
+    assert l["pontos"] and "“promoção”" in l["pontos"][0]
 
 
 def test_peca_publicar_agora_so_remarca_e_chama_a_funcao_com_a_agenda_desligada(pagina, pauta):
