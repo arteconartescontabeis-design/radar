@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.125.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.126.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -624,6 +624,7 @@ async function telaPeca(id){
           <div><label for="peca-quem">Quem aparece (lembrete)</label><input id="peca-quem" type="text" name="quem_aparece" maxlength="300" value="${h(p.quem_aparece)}"${desPlano}></div></div>
         <label for="peca-observacao">Observação</label><textarea id="peca-observacao" name="observacao" maxlength="1000" rows="2"${desPlano}>${h(p.observacao)}</textarea></details>
       ${ed ? `<div class="acoes peca-acoes"><button class="btn">Salvar</button>
+        ${p.tipo === "noticia" && ["planejada", "em_producao"].includes(p.situacao) ? `<button class="btn verde" type="button" data-acao="pauta-gerar-noticia" data-id="${p.id}">Gerar com IA</button>` : ""}
         ${vaiAoAr && ["planejada", "em_producao"].includes(p.situacao) ? `<button class="btn verde" type="button" data-acao="peca-salvar-pronta">Salvar e marcar como pronta</button>` : ""}
         ${vaiAoAr && ["planejada", "em_producao", "pronta"].includes(p.situacao) ? `<button class="btn sec" type="button" data-acao="peca-conferir">Conferir o que falta</button>` : ""}
         ${p.situacao === "pronta" ? `<button class="btn sec" type="button" data-acao="peca-voltar-producao">Voltar para produção</button>` : ""}
@@ -1843,6 +1844,8 @@ const PAUTA = {
     // dos 10 critérios e legendas), levando ao passo "Conferir e aprovar". Sem legislação, pergunta se quer criar assim mesmo e
     // abre o assunto para a equipe preparar a fonte — o Radar nunca inventa texto sem fonte conferida.
     async "pauta-gerar-noticia"(el){
+      const fPeca = el.closest("form[data-form=peca]");                 // v0.126.0: o botão também aparece dentro da peça aberta
+      if(fPeca && pecaMudou(fPeca)){ recado("Salve a peça antes de gerar com IA (há alterações não salvas).", true); return; }
       const [p] = await ler("radar_pauta_pecas", {select:"assunto,tipo,formato", id:"eq." + Number(el.dataset.id)});
       if(!p){ recado("Peça não encontrada (atualize a página).", true); return; }
       const texto = (p.assunto || "").trim();
