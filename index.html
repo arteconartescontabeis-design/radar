@@ -73,6 +73,7 @@ label,.rotulo{display:block;font-size:.8rem;font-weight:700;color:var(--marinho)
 .btn:disabled{opacity:.5;cursor:not-allowed}
 table{width:100%;border-collapse:collapse}
 th{white-space:nowrap;text-align:left;font-size:.78rem;text-transform:uppercase;letter-spacing:.4px;color:var(--marinho);border-bottom:2px solid var(--linha);padding:7px 8px}
+th.ordenavel{cursor:pointer;user-select:none} th.ordenavel:hover{color:var(--ouro,#B8860B)} th.ordenavel::after{content:"\2195";opacity:.35;margin-left:4px;font-size:.72rem} th.ordenavel.ord-asc::after{content:"\2191";opacity:1} th.ordenavel.ord-desc::after{content:"\2193";opacity:1}
 td{border-bottom:1px solid var(--linha);padding:8px;vertical-align:top}
 .rolagem{overflow-x:auto}
 td.email{min-width:170px}
@@ -480,21 +481,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.120.0"></script>
-<script src="radar-video.js?v=0.120.0"></script>
-<script src="radar-setor.js?v=0.120.0"></script>
-<script src="radar-respostas.js?v=0.120.0"></script>
+<script src="radar-pauta.js?v=0.121.0"></script>
+<script src="radar-video.js?v=0.121.0"></script>
+<script src="radar-setor.js?v=0.121.0"></script>
+<script src="radar-respostas.js?v=0.121.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.120.0";
+const VERSAO = "0.121.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.121.0", "19/11/2026", [
+    "<b>Pesquisa e colunas que ordenam na aba Assuntos</b>: agora há uma <b>caixa de busca</b> que filtra a lista carregada pelo <b>título</b> e pela <b>fonte</b>, e os <b>cabeçalhos das colunas</b> (Assunto, Capturado em, Fonte, Relevância, Confirmação, Etapa, Fundamentação) podem ser <b>clicados para ordenar</b> — um clique ordena em ordem crescente, outro clique inverte. A ordenação vale só enquanto a tela está aberta; ao <b>reabrir a aba</b>, a lista volta à <b>ordem de captura</b>. Nas Capturas, a busca passou a considerar também a fonte.",
+    "Administrador: a mudança é só na TELA (index.html + os .js juntos). Nada muda no banco. Publique tudo junto e aperte Ctrl+F5."]],
   ["0.120.0", "19/11/2026", [
     "<b>Liberação do administrador</b> na Pauta: quando um ponto de publicidade do CFC é um falso positivo (ex.: “promoção” é a data Black Friday, não uma oferta do escritório) ou falta a fonte de um número, o administrador pode <b>Publicar assim mesmo</b>, escrevendo um <b>motivo</b> que fica registrado (quem, quando, por quê). Continuam <b>bloqueados, sem liberação</b>: pessoa sem termo, falha de estrutura, limite da rede, identificação legal, <b>[VERIFICAR]</b> (fato não confirmado) e boletim pago — são verdade/legalidade, não tom de propaganda. Editor não libera; só o administrador.",
     "Administrador: a mudança é no BANCO (as funções de aprovação e uma coluna de registro) e na tela. A migração já foi aplicada em produção; em outra base, rode de novo o sql/radar-setup-v0.50.0.sql (pode rodar quantas vezes quiser). Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5."]],
@@ -1843,12 +1847,12 @@ const TELAS = {
     return `<h1>Capturas aguardando triagem</h1>
       <p class="sub">O que o robô encontrou nas fontes oficiais e ainda não virou assunto. A tela abre só com o que está <b>em alta</b>: as capturas de maior nota, sem repetição. “Relevantes” traz as demais, também sem repetição; “Todas” mostra tudo, inclusive as repetições.</p>
       <div class="linha-filtros"><div class="chips" id="filtro-fila">${chip("emalta", "Em alta")}${chip("relevantes", "Relevantes")}${chip("baixa", "Baixa relevância")}${chip("todas", "Todas")}</div></div>
-      <div class="linha-filtros"><input type="text" id="busca-fila" placeholder="Buscar no título…" data-filtro="fila" aria-label="Buscar no título">
+      <div class="linha-filtros"><input type="text" id="busca-fila" placeholder="Buscar no título ou fonte…" data-filtro="fila" aria-label="Buscar no título ou fonte">
         <select id="fonte-fila" data-filtro="fila" aria-label="Fonte"><option value="">Todas as fontes</option>${fontes.map(x => `<option>${h(x)}</option>`).join("")}</select>
         ${(f === "baixa" || f === "relevantes") && itens.length && podeEditar() ? `<button class="btn sec" data-acao="ignorar-lista" id="ignorar-lista">Ignorar as ${itens.length} desta lista</button>` : ""}</div>
       ${f === "emalta" && n.sem_avaliacao_ia ? `<div class="aviso info" id="sem-nota">${n.sem_avaliacao_ia} captura(s) ainda sem a nota da IA: o robô avalia na próxima coleta. Enquanto isso, valem as palavras do título.</div>` : ""}
       ${itens.length ? `<div id="tab-fila">${itens.map(i => `
-        <article class="cap rel-${h(i.relevancia)}" data-fonte="${h(i.fonte_nome)}" data-texto="${h((i.titulo || "").toLowerCase())}" data-id="${i.id}">
+        <article class="cap rel-${h(i.relevancia)}" data-fonte="${h(i.fonte_nome)}" data-texto="${h(((i.titulo || "") + " " + (i.fonte_nome || "")).toLowerCase())}" data-id="${i.id}">
           <div>${nota(i)} ${selo("Relevância " + (ROTULOS.relevancia[i.relevancia] || "").toLowerCase(), i.relevancia === "alta" ? "erro" : i.relevancia === "media" ? "" : "neutro")}
             ${baseLegal(i).selo} ${selo(i.orgao, "neutro")} ${selo(ROTULOS.abrangencia[i.abrangencia] || "", "neutro")}
             ${(i.relevancia_motivos || []).find?.(m => m && m.idade) ? selo((i.relevancia_motivos.find(m => m && m.idade).termo || "notícia antiga"), "neutro") : ""}
@@ -1912,7 +1916,7 @@ const TELAS = {
     else if(f !== "todos") params.status = "eq." + f;
     const itens = await ler("radar_v_assuntos", params); const cat = catMapa();
     return `<h1>Assuntos</h1>
-      <div class="linha-filtros"><select data-filtro="assuntos" id="filtro-assuntos" aria-label="Situação do assunto">
+      <div class="linha-filtros"><input type="text" id="busca-assuntos" placeholder="Buscar no título ou fonte…" data-filtro="assuntos" aria-label="Buscar no título ou fonte"><select id="filtro-assuntos" aria-label="Situação do assunto">
         <optgroup label="Principais">
           <option value="capturado"${f==="capturado"?" selected":""}>📥 Capturado — falta tratar</option>
           <option value="falta_publicar"${f==="falta_publicar"?" selected":""}>✍️ Falta publicar — em tratamento</option>
@@ -1941,8 +1945,8 @@ const TELAS = {
         <label class="sub" for="lote-redes" style="margin:0">Nas redes</label><select id="lote-redes">${opcoes(REDES_PREPARO, E.loteRedes || "foto")}</select>
         <button class="btn verde" type="button" data-acao="ia-lote">Preparar as marcadas com IA</button></div>
         <p class="sub" style="margin:6px 0 0">Marque as caixas na primeira coluna da lista. Cada notícia é preparada por inteiro — a fonte, o texto, a imagem, a conferência dos 10 critérios e as legendas — e chega no passo “Conferir e aprovar”; nada é publicado. A que não tem texto capturado, ou que já tem texto, é pulada (o motivo sai no resumo). Deixe esta aba aberta até terminar.</p></div>` : ""}
-      ${itens.length ? `<div class="painel rolagem"><table><tr>${podeEditar() ? `<th><input type="checkbox" id="marcar-assuntos" aria-label="Marcar todos os assuntos da lista"></th>` : ""}<th>Assunto</th><th>Capturado em</th><th>Fonte</th><th>Relevância</th><th>Confirmação</th><th>Etapa</th><th>Fundamentação</th></tr>${itens.map(a => `
-        <tr class="clicavel" data-acao="abrir-assunto" data-id="${a.id}">
+      ${itens.length ? `<div class="painel rolagem"><table id="tab-assuntos"><tr>${podeEditar() ? `<th><input type="checkbox" id="marcar-assuntos" aria-label="Marcar todos os assuntos da lista"></th>` : ""}<th class="ordenavel" data-ordenar="assunto" data-tipo="texto">Assunto</th><th class="ordenavel" data-ordenar="data" data-tipo="texto">Capturado em</th><th class="ordenavel" data-ordenar="fonte" data-tipo="texto">Fonte</th><th class="ordenavel" data-ordenar="relevancia" data-tipo="num">Relevância</th><th class="ordenavel" data-ordenar="confirmacao" data-tipo="texto">Confirmação</th><th class="ordenavel" data-ordenar="etapa" data-tipo="texto">Etapa</th><th class="ordenavel" data-ordenar="fundamentacao" data-tipo="num">Fundamentação</th></tr>${itens.map(a => `
+        <tr class="clicavel" data-acao="abrir-assunto" data-id="${a.id}" data-fonte="${h(a.orgaos || "")}" data-texto="${h(((a.titulo || "") + " " + (a.orgaos || "")).toLowerCase())}" data-ord-assunto="${h((a.titulo || "").toLowerCase())}" data-ord-data="${h(a.capturado_em || "")}" data-ord-fonte="${h((a.orgaos || "").toLowerCase())}" data-ord-relevancia="${a.relevancia === "alta" ? 3 : a.relevancia === "media" ? 2 : a.relevancia === "baixa" ? 1 : 0}" data-ord-confirmacao="${h((a.situacao_confirmacao || "").toLowerCase())}" data-ord-etapa="${h(a.status || "")}" data-ord-fundamentacao="${Number(a.evidencias_conferidas) || 0}">
           ${podeEditar() ? `<td><input type="checkbox" class="sel-assunto" value="${a.id}" data-titulo="${h(a.titulo)}" aria-label="Marcar ${h(a.titulo)}"></td>` : ""}
           <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${a.id}">${h(a.titulo)}</button><br><span class="sub">${h(cat[a.categoria] || "sem categoria")}</span></td>
           <td class="sub">${data(a.capturado_em)}</td>
@@ -6447,12 +6451,32 @@ document.addEventListener("input", ev => {
   if(fc && (ev.target.name === "titulo" || ev.target.name === "corpo") && !ev.target.disabled) guardarRascunho(fc);
   // v0.117.0: a busca/fonte do fila vale também para a aba Legislação (mesmo formato de cartão)
   const alvo = ev.target.dataset.filtro;
-  if(alvo !== "fila" && alvo !== "legislacao") return;
+  if(alvo !== "fila" && alvo !== "legislacao" && alvo !== "assuntos") return;
   const busca = ($("#busca-" + alvo)?.value || "").trim().toLowerCase(), fonte = $("#fonte-" + alvo)?.value || "";
   document.querySelectorAll("#tab-" + alvo + " [data-fonte]").forEach(tr => {
     tr.hidden = (busca && !tr.dataset.texto.includes(busca)) || (fonte && tr.dataset.fonte !== fonte); });
   const lote = $("#ignorar-lista");
   if(alvo === "fila" && lote){ const n = document.querySelectorAll("#tab-fila [data-fonte]:not([hidden])").length; lote.textContent = `Ignorar as ${n} desta lista`; lote.disabled = !n; }
+});
+// v0.121.0: ordenar as colunas clicáveis (só nesta sessão — ao reabrir volta à ordem de captura)
+document.addEventListener("click", ev => {
+  const th = ev.target.closest("th.ordenavel");
+  if(!th) return;
+  const tabela = th.closest("table");
+  if(!tabela) return;
+  const campo = th.dataset.ordenar, numero = th.dataset.tipo === "num";
+  const asc = !(th.dataset.dir === "asc"); // alterna; primeiro clique = crescente
+  tabela.querySelectorAll("th.ordenavel").forEach(o => { delete o.dataset.dir; o.classList.remove("ord-asc", "ord-desc"); });
+  th.dataset.dir = asc ? "asc" : "desc";
+  th.classList.add(asc ? "ord-asc" : "ord-desc");
+  const linhas = [...tabela.querySelectorAll("tr[data-ord-" + campo + "]")];
+  linhas.sort((a, b) => {
+    const x = a.getAttribute("data-ord-" + campo) || "", y = b.getAttribute("data-ord-" + campo) || "";
+    const c = numero ? (Number(x) - Number(y)) : x.localeCompare(y, "pt-BR");
+    return asc ? c : -c;
+  });
+  const pai = linhas[0] && linhas[0].parentNode;
+  if(pai) linhas.forEach(l => pai.appendChild(l));
 });
 document.addEventListener("change", ev => {
   if(ev.target.dataset.imagem){
