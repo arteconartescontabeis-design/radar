@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.128.0"
+    assert pagina.inner_text(".versao") == "v0.129.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.128.0" and data == "20/11/2026" and len(itens) == 4
+    assert topo == pagina.evaluate("VERSAO") == "0.129.0" and data == "20/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2460,7 +2460,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.128.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.129.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3389,7 +3389,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.128.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.129.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7704,7 +7704,7 @@ MESES_CRONOGRAMA = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
 # os testes clicam nos botões pelo texto (sem escopo, sem diferença de maiúsculas), e o quadro fica acima da barra
 PROIBIDOS_CRONOGRAMA = ["esta semana", "semana anterior", "próxima semana", "sair", "abrir", "pessoas e termos", "gravar", "voltar", "painel do dia"]
 SELECT_CAPTURAS_CRONOGRAMA = ("id,relevancia,data_publicacao,capturado_em,incluido_em:metadados->>incluido_em,"
-                              "radar_assunto_capturas(assunto_id,radar_assuntos(status,radar_conteudos(id,radar_divulgacoes(id))))")
+                              "radar_assunto_capturas(assunto_id,radar_assuntos(status,radar_conteudos(id,radar_divulgacoes(id),radar_redes_envios(situacao))))")
 
 
 def test_cronograma_conta_minimo_e_feito_sem_depender_de_hoje(pagina):
@@ -7792,6 +7792,32 @@ def test_cronograma_conta_minimo_e_feito_sem_depender_de_hoje(pagina):
     assert r["umaVez"] == [[2, 0, 2], [2, 0, 2]], r["umaVez"]
     # o fato achado em 31/08 e de novo em 02/09: uma vez em agosto, uma em setembro e uma vez na semana que pega os dois dias
     assert r["doisMeses"] == [[1, 0, 1], [1, 0, 1], [1, 0, 1]], r["doisMeses"]
+
+
+def test_cronograma_noticia_nas_redes_conta_e_mostra_o_que_falta_v129(pagina):
+    """v0.129.0 (Opção A): a linha "Notícias do Radar (alta)" conta como FEITO a notícia que saiu nas REDES (Instagram/Facebook),
+    não só a publicada no site. E, abaixo, o quadro mostra quantas de alta ainda faltam publicar — com assunto já aberto x sem assunto
+    (só números)."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    r = pagina.evaluate("""() => {
+      const C = (id, capturado_em, x = {}) => ({id, relevancia: "alta", capturado_em, data_publicacao: null, incluido_em: null, radar_assunto_capturas: [], ...x});
+      const comConteudo = (id, extra) => ({assunto_id: id, radar_assuntos: {status: "publicado", radar_conteudos: [{id: id * 10, radar_divulgacoes: [], radar_redes_envios: [], ...extra}]}});
+      const capturas = [
+        C(1, "2026-09-02T12:00:00Z", {radar_assunto_capturas: [comConteudo(60, {radar_redes_envios: [{situacao: "publicado"}]})]}),  // saiu nas redes (sem site) -> feito
+        C(2, "2026-09-03T12:00:00Z", {radar_assunto_capturas: [comConteudo(61, {})]}),                                              // com assunto, sem publicar -> falta
+        C(3, "2026-09-04T12:00:00Z")];                                                                                              // sem assunto -> falta
+      const k = contarCronograma("2026-09-01", "2026-09-30", "2026-10-16", {pecas: [], noticias: [], capturas, dias: 5});
+      const div = document.createElement("div");
+      div.innerHTML = blocoCronograma("2026-09-01", "2026-10-16", {semana: k, mes: k, cortado: false});
+      const noticias = k.linhas.at(-1);
+      return {linha: [noticias.minimo, noticias.feito, noticias.atraso], falta: k.faltaNoticias, texto: div.textContent.replace(/\\s+/g, " ")};
+    }""")
+    assert r["linha"] == [3, 1, 2]                                          # 3 de alta; 1 saiu nas redes (feito); 2 faltam (já passaram -> atraso)
+    assert r["falta"] == {"total": 2, "comAssunto": 1, "semAssunto": 1}
+    assert "Faltam 2 notícia(s) de alta sem publicar" in r["texto"]
+    assert "1 com assunto já aberto" in r["texto"] and "1 ainda sem assunto" in r["texto"]
+    assert "Os títulos ficam na aba Assuntos" in r["texto"]
 
 
 def test_cronograma_com_data_de_inicio_da_contagem(pagina):

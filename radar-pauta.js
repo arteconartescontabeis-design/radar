@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.128.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.129.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -197,16 +197,23 @@ function contarCronograma(ini, fim, hoje, {pecas, noticias, antes = [], capturas
     if(!no(d) || (c.incluido_em && Math.abs(Date.parse(c.incluido_em) - Date.parse(c.capturado_em)) < 60000)) continue;
     if(velha && c.data_publicacao && c.data_publicacao < somarDias(d, -dias)) continue;
     const ac = c.radar_assunto_capturas || [], as = ac.map(x => x.radar_assuntos).filter(Boolean);
-    const chave = ac.length ? "a" + Math.min(...ac.map(x => x.assunto_id)) : "c" + c.id, f = fatos.get(chave);
+    const temAssunto = ac.length > 0, chave = temAssunto ? "a" + Math.min(...ac.map(x => x.assunto_id)) : "c" + c.id, f = fatos.get(chave);
     const site = as.some(a => (a.radar_conteudos || []).some(k => (k.radar_divulgacoes || []).length > 0));
+    // v0.129.0 (Opção A): "feito" também quando a notícia saiu nas REDES (Instagram/Facebook), não só no site
+    const redes = as.some(a => (a.radar_conteudos || []).some(k => (k.radar_redes_envios || []).some(e => e.situacao === "publicado")));
+    const pub = site || redes;
     const ignorada = !velha && as.length > 0 && as.every(a => ["ignorado", "arquivado"].includes(a.status));
-    fatos.set(chave, f ? {dia:f.dia < d ? f.dia : d, site:f.site || site, ignorada:f.ignorada && ignorada} : {dia:d, site, ignorada}); }
-  const contam = [...fatos.values()].filter(f => f.site || !f.ignorada), cap = linha("captacao", "Captação de clientes");
+    fatos.set(chave, f ? {dia:f.dia < d ? f.dia : d, pub:f.pub || pub, temAssunto:f.temAssunto || temAssunto, ignorada:f.ignorada && ignorada}
+                       : {dia:d, pub, temAssunto, ignorada}); }
+  const contam = [...fatos.values()].filter(f => f.pub || !f.ignorada), cap = linha("captacao", "Captação de clientes");
+  // v0.129.0: o que ainda falta publicar (de alta) — só números (o quadro nunca mostra títulos): quantas com assunto já aberto e quantas sem
+  const faltam = contam.filter(f => !f.pub);
+  const faltaNoticias = {total:faltam.length, comAssunto:faltam.filter(f => f.temAssunto).length, semAssunto:faltam.filter(f => !f.temAssunto).length};
   return {fase:fim < hoje ? "passou" : ini > hoje ? "futuro" : "andamento", canceladas:doPeriodo.length - validas.length,
-    ignoradas:fatos.size - contam.length, semPlano:!doPeriodo.length,
+    ignoradas:fatos.size - contam.length, semPlano:!doPeriodo.length, faltaNoticias,
     linhas:[linha("posts", "Posts no feed"), linha("reels", "Reels"), ...(cap.minimo ? [cap] : []),
-      {id:"noticias", rotulo:"Notícias do Radar (alta)", minimo:contam.length, feito:contam.filter(f => f.site).length,
-       atraso:contam.filter(f => !f.site && passou(f.dia)).length}]};
+      {id:"noticias", rotulo:"Notícias do Radar (alta)", minimo:contam.length, feito:contam.filter(f => f.pub).length,
+       atraso:contam.filter(f => !f.pub && passou(f.dia)).length}]};
 }
 // uma leitura por tabela para a semana e o mês juntos (a faixa que cobre os dois), só com as colunas da conta
 // v0.48.0: carrega os dados do cronograma (peças, publicações e capturas) para a faixa [ini, fim] — usado pela projeção do Painel
@@ -216,7 +223,7 @@ async function dadosCronograma(ini, fim){
   const desde = ini + "T00:00:00-03:00", ate = somarDias(fim, 1) + "T00:00:00-03:00";    // o dia de Brasília (-03:00 fixo, como em passouDaHora)
   // só a principal de cada fato (sem as repetições); a "baixa" só a que era alta e desceu pela idade (radar_relevancia_idade)
   const capturas = filtro => ler("radar_capturas", {select:"id,relevancia,data_publicacao,capturado_em,incluido_em:metadados->>incluido_em," +
-      "radar_assunto_capturas(assunto_id,radar_assuntos(status,radar_conteudos(id,radar_divulgacoes(id))))", duplicata_de:"is.null",
+      "radar_assunto_capturas(assunto_id,radar_assuntos(status,radar_conteudos(id,radar_divulgacoes(id),radar_redes_envios(situacao))))", duplicata_de:"is.null",
     and:`(capturado_em.gte.${desde},capturado_em.lt.${ate})`, order:"id", limit:limite, ...filtro});
   const [pecas, noticias, altas, velhas] = await Promise.all([
     ler("radar_pauta_pecas", {select:"id,data,tipo,formato,situacao,publicado_manual_em,radar_redes_envios(situacao)", and:`(data.gte.${ini},data.lte.${fim})`}),
@@ -275,6 +282,7 @@ function blocoCronograma(seg, hoje, c){
       ${k.canceladas ? `<p class="sub">${k.canceladas === 1 ? "1 peça cancelada não entra no mínimo." : `${k.canceladas} peças canceladas não entram no mínimo.`}</p>` : ""}
       ${k.ignoradas ? `<p class="sub">${k.ignoradas === 1 ? "1 notícia de alta foi ignorada na triagem e não entra no mínimo."
         : `${k.ignoradas} notícias de alta foram ignoradas na triagem e não entram no mínimo.`}</p>` : ""}
+      ${k.faltaNoticias && k.faltaNoticias.total ? `<p class="sub crono-falta"><b>Faltam ${k.faltaNoticias.total}</b> notícia(s) de alta sem publicar (${[k.faltaNoticias.comAssunto && `${k.faltaNoticias.comAssunto} com assunto já aberto`, k.faltaNoticias.semAssunto && `${k.faltaNoticias.semAssunto} ainda sem assunto`].filter(Boolean).join(", ")}). Os títulos ficam na aba Assuntos.</p>` : ""}
     </section>`;
   return `<div class="painel" id="pauta-cronograma">${topo}
     <div class="crono-periodos">${periodo("semana", `Semana de ${ddmm(semana.ini)} a ${ddmm(semana.fim)}`, c.semana)}${periodo("mes", nome[0].toUpperCase() + nome.slice(1), c.mes)}</div>
@@ -284,7 +292,8 @@ function blocoCronograma(seg, hoje, c){
       <li><b>Posts no feed:</b> as peças de imagem, foto ou carrossel, com os dias de notícia. Reels e captação de clientes têm linha própria; story e dia sem post não entram.</li>
       <li><b>Feito, na peça:</b> a peça já publicada no Instagram ou no Facebook (pela agenda ou registrada à mão), contada no dia dela na Pauta. A excluída da rede não conta.</li>
       <li><b>Feito, no dia de notícia:</b> uma notícia do Radar publicada no Instagram ou no Facebook no período, contada no primeiro dia em que foi publicada (a mesma notícia nas duas redes conta uma vez; no máximo uma por dia de notícia).</li>
-      <li><b>Notícias do Radar (alta):</b> cada fato conta uma vez em cada período (sem as repetições), pelo dia em que o Radar achou; o fato achado de novo em outro mês (por exemplo, o texto oficial que chegou dias depois) conta nos dois. Contam também as que desceram para baixa só por ficarem velhas na fila, mesmo se forem ignoradas depois. Não entram o texto oficial colado à mão, a notícia que já chegou velha e a que a equipe ignorou na triagem enquanto ainda era alta. Feito: as que já estão no site, publicadas em qualquer dia.</li>
+      <li><b>Notícias do Radar (alta):</b> cada fato conta uma vez em cada período (sem as repetições), pelo dia em que o Radar achou; o fato achado de novo em outro mês (por exemplo, o texto oficial que chegou dias depois) conta nos dois. Contam também as que desceram para baixa só por ficarem velhas na fila, mesmo se forem ignoradas depois. Não entram o texto oficial colado à mão, a notícia que já chegou velha e a que a equipe ignorou na triagem enquanto ainda era alta. <b>Feito</b> (v0.129.0): as que já <b>saíram nas redes</b> (Instagram ou Facebook) ou no site, publicadas em qualquer dia.</li>
+      <li><b>Faltam … sem publicar:</b> das notícias de alta que a busca achou no período, as que ainda não saíram — divididas em “com assunto já aberto” (alguém começou) e “ainda sem assunto”. São só números; os títulos ficam na aba <b>Assuntos</b>.</li>
       <li><b>Vermelho:</b> o que já devia ter saído até ontem e não saiu. No período que já passou, é tudo o que ficou abaixo do mínimo; no que ainda não começou, nada fica vermelho.</li>
       <li>O mês é o de hoje na semana de hoje; nas outras semanas, o da maior parte da semana. Na semana e no mês em andamento, o número de notícias pode mudar durante o dia (a nota da IA chega depois da busca).</li></ul></details>
   </div>`;
