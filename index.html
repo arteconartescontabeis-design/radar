@@ -493,21 +493,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.132.0"></script>
-<script src="radar-video.js?v=0.132.0"></script>
-<script src="radar-setor.js?v=0.132.0"></script>
-<script src="radar-respostas.js?v=0.132.0"></script>
+<script src="radar-pauta.js?v=0.133.0"></script>
+<script src="radar-video.js?v=0.133.0"></script>
+<script src="radar-setor.js?v=0.133.0"></script>
+<script src="radar-respostas.js?v=0.133.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.132.0";
+const VERSAO = "0.133.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.133.0", "20/11/2026", [
+    "<b>Arquivar (ocultar da lista, sem apagar)</b>: em <b>Capturas</b>, <b>Legislação</b>, <b>Assuntos</b> e nas <b>notícias</b> de Publicações, cada item ganhou o botão <b>Arquivar</b> (só o administrador). Arquivar <b>tira o item da lista</b> sem apagar nada — some das contagens e da triagem. Cada lista tem o botão <b>“Ver arquivados”</b>, que mostra só os arquivados; ali, <b>“Desarquivar”</b> traz o item de volta com <b>um clique</b>. Serve para limpar o que não interessa sem perder o histórico (diferente de “Ignorar”, que é da triagem, e de “Apagar/Excluir”, que não volta).",
+    "Administrador: esta versão mexe no <b>BANCO</b> (acrescenta a coluna <code>arquivado_em</code> em radar_capturas, radar_normas, radar_assuntos e radar_conteudos, cria a função <code>radar_arquivar</code> e refaz as views radar_v_fila, radar_v_em_alta e radar_v_assuntos). Rode no Supabase (SQL Editor) o <b>sql/radar-arquivar-v0.133.0.sql</b> (pode rodar de novo; nenhuma tabela é apagada) e publique o index.html com os demais .js. Nenhuma função Edge muda. Aperte Ctrl+F5."]],
   ["0.132.0", "20/11/2026", [
     "<b>Informativo com link para ler on-line</b>: no fim de cada artigo do Informativo Mensal, quando a notícia já foi publicada no site da Artecon, aparece um <b>link para ler a publicação on-line</b>. E, ao montar a edição, uma nota lembra que a notícia escolhida entra <b>pronta</b> (título, texto, fonte e imagem do conteúdo aprovado).",
     "Administrador: a mudança é só na TELA (index.html, informativo.html e os .js juntos). Nada muda no banco, nas funções Edge nem no robô. Publique tudo junto e aperte Ctrl+F5."]],
@@ -1156,6 +1159,10 @@ function h(v){ return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<"
 function data(v){ if(!v) return "—"; const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(v) ? v+"T12:00:00" : v); return isNaN(d) ? "—" : d.toLocaleDateString("pt-BR"); }
 function dataHora(v){ if(!v) return "—"; const d = new Date(v); return isNaN(d) ? "—" : d.toLocaleString("pt-BR", {dateStyle:"short", timeStyle:"short"}); }
 function selo(texto, tipo=""){ return `<span class="selo ${tipo}">${h(texto)}</span>`; }
+// v0.133.0: arquivar (ocultar da lista, reversível, só o administrador) — o botão por item e o alternador "Ver arquivados"
+function botaoArquivar(tabela, id, arq){ return ehAdmin() ? `<button class="btn peq ${arq ? "sec" : "perigo"}" type="button" data-acao="arquivar-item" data-tabela="${tabela}" data-id="${id}" data-on="${arq ? "0" : "1"}">${arq ? "Desarquivar" : "Arquivar"}</button>` : ""; }
+function verArquivadosLigado(aba){ return !!(E.verArquivados && E.verArquivados[aba]); }
+function toggleArquivados(aba){ return ehAdmin() ? `<button class="chip ${verArquivadosLigado(aba) ? "ativa" : ""}" type="button" data-acao="ver-arquivados" data-aba="${aba}" aria-pressed="${verArquivadosLigado(aba)}">${verArquivadosLigado(aba) ? "← Voltar à lista" : "Ver arquivados"}</button>` : ""; }
 function opcoes(mapa, atual, vazio){ return (vazio!==undefined ? `<option value="">${h(vazio)}</option>` : "") +
   Object.entries(mapa).map(([k,v]) => `<option value="${h(k)}"${k===atual?" selected":""}>${h(v)}</option>`).join(""); }
 function recado(msg, erro=false){
@@ -1519,7 +1526,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.pagoBanco = {}; E.kitAberto = {}; E.capaDesenhada = null; E.conteudosIA = null; E.pauta = {semana:null, peca:null, vista:"semana", previa:null, nova:null}; clearTimeout(E.video?.relogio); E.video = {arquivos:{}}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.pagoBanco = {}; E.kitAberto = {}; E.capaDesenhada = null; E.conteudosIA = null; E.pauta = {semana:null, peca:null, vista:"semana", previa:null, nova:null}; E.verArquivados = {}; clearTimeout(E.video?.relogio); E.video = {arquivos:{}}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 /* v0.22.0 (rodada 2 da varredura geral): a sessão (access_token e refresh_token) fica na sessionStorage desta aba, não mais no
    localStorage. O Radar é servido em arteconartescontabeis-design.github.io, a MESMA origem dos outros aplicativos da conta no GitHub
@@ -1891,13 +1898,16 @@ const TELAS = {
   },
 
   async fila(){
-    const f = E.filtros.fila || "emalta";
+    const f = E.filtros.fila || "emalta", arqF = verArquivadosLigado("fila");
     // as mais recentes no alto (a data da notícia; sem data, a da captura). Em alta continua escolhendo as de maior nota.
     const ordem = "data_publicacao.desc.nullslast,capturado_em.desc,id.desc";
     const lim = limiteDe("fila:" + f, 150), params = {select:"*", order:ordem, limit:String(lim)};
     if(f === "relevantes"){ params.relevancia = "in.(alta,media)"; params.principal = "is.true"; }
     else if(f === "baixa") params.relevancia = "eq.baixa";
-    const [itens, [n]] = await Promise.all([ler(f === "emalta" ? "radar_v_em_alta" : "radar_v_fila", params),
+    // v0.133.0: por padrão só as ativas; "Ver arquivados" mostra as arquivadas (sempre pela radar_v_fila; a radar_v_em_alta já exclui a arquivada)
+    if(arqF){ params.arquivado_em = "not.is.null"; params.principal = "is.true"; }
+    else if(f !== "emalta") params.arquivado_em = "is.null";
+    const [itens, [n]] = await Promise.all([ler(arqF || f !== "emalta" ? "radar_v_fila" : "radar_v_em_alta", params),
       ler("radar_v_painel", {select:"na_fila,na_fila_principal,na_fila_baixa,em_alta,sem_avaliacao_ia"})]);
     const total = {emalta:n.em_alta, relevantes:n.na_fila_principal, baixa:n.na_fila_baixa, todas:n.na_fila + n.na_fila_baixa};
     // v0.16.0: os títulos das repetições recolhidas atrás de cada cartão (cada uma com "Não é o mesmo fato")
@@ -1930,7 +1940,7 @@ const TELAS = {
       baixa:"Nenhuma captura de baixa relevância na fila.", todas:"Nada na fila. Quando o robô capturar novidades, elas aparecem aqui."};
     return `<h1>Capturas aguardando triagem</h1>
       <p class="sub">O que o robô encontrou nas fontes oficiais e ainda não virou assunto. A tela abre só com o que está <b>em alta</b>: as capturas de maior nota, sem repetição. “Relevantes” traz as demais, também sem repetição; “Todas” mostra tudo, inclusive as repetições.</p>
-      <div class="linha-filtros"><div class="chips" id="filtro-fila">${chip("emalta", "Em alta")}${chip("relevantes", "Relevantes")}${chip("baixa", "Baixa relevância")}${chip("todas", "Todas")}</div></div>
+      <div class="linha-filtros"><div class="chips" id="filtro-fila">${chip("emalta", "Em alta")}${chip("relevantes", "Relevantes")}${chip("baixa", "Baixa relevância")}${chip("todas", "Todas")}</div>${toggleArquivados("fila")}</div>
       <div class="linha-filtros"><input type="text" id="busca-fila" placeholder="Buscar no título ou fonte…" data-filtro="fila" aria-label="Buscar no título ou fonte">
         <select id="fonte-fila" data-filtro="fila" aria-label="Fonte"><option value="">Todas as fontes</option>${fontes.map(x => `<option>${h(x)}</option>`).join("")}</select>
         ${(f === "baixa" || f === "relevantes") && itens.length && podeEditar() ? `<button class="btn sec" data-acao="ignorar-lista" id="ignorar-lista">Ignorar as ${itens.length} desta lista</button>` : ""}</div>
@@ -1950,11 +1960,11 @@ const TELAS = {
           ${i.duplicata_de && i.principal && i.origem_assunto_id ? `<p class="sub mesmo-fato"><b>Parece o mesmo fato do assunto:</b> ${h(i.origem_assunto)}. <button class="voltar" style="margin:0" data-acao="abrir-assunto" data-id="${i.origem_assunto_id}">ver o assunto</button><br>Se for mesmo, clique em Ignorar; se trouxer novidade, clique em “Não é o mesmo fato” ou abra um assunto novo.</p>` : ""}
           ${i.repetidas ? `<div class="sub repetidas"><b>Mesmo fato em mais ${i.repetidas} captura(s)</b> (entram juntas no assunto e saem da fila):
             <ul>${reps.filter(r => r.duplicata_de === i.id).map(r => `<li data-repeticao="${r.id}">${h(r.titulo)} <span class="sub">· ${h(r.fonte_nome)}</span> ${linkFonte(r.url, "↗")} ${separar(r.id)}</li>`).join("")}</ul></div>` : ""}
-          <div class="acoes">${podeEditar() ? `<button class="btn peq" data-acao="abrir-da-captura" data-id="${i.id}">Abrir assunto</button>
-            <button class="btn peq sec" data-acao="ignorar-captura" data-id="${i.id}">Ignorar</button>` : ""}
-            ${i.duplicata_de ? separar(i.id) : ""}
-            ${linkFonte(i.url, "abrir na fonte ↗")}</div></article>`).join("")}</div>`
-        : `<div class="painel"><p class="sub">${vazio[f]}</p></div>`}
+          <div class="acoes">${arqF ? "" : (podeEditar() ? `<button class="btn peq" data-acao="abrir-da-captura" data-id="${i.id}">Abrir assunto</button>
+            <button class="btn peq sec" data-acao="ignorar-captura" data-id="${i.id}">Ignorar</button>` : "")}
+            ${arqF ? "" : (i.duplicata_de ? separar(i.id) : "")}
+            ${linkFonte(i.url, "abrir na fonte ↗")} ${botaoArquivar("radar_capturas", i.id, arqF)}</div></article>`).join("")}</div>`
+        : `<div class="painel"><p class="sub">${arqF ? "Nenhuma captura arquivada." : vazio[f]}</p></div>`}
       ${f !== "emalta" ? botaoMais("fila:" + f, itens.length, lim, "capturas", total[f]) : ""}
       <p class="sub">As mais recentes aparecem primeiro. A nota da IA vem do robô, depois de cada coleta; antes dela, um filtro por palavras separa o que é de baixa relevância. ${ehAdmin() ? "As regras, a nota de corte e a quantidade ficam em Configurações → Relevância das capturas." : "O administrador ajusta as regras em Configurações."}</p>`;
   },
@@ -1965,8 +1975,9 @@ const TELAS = {
     const LEG = ["dou-confaz","dou-confaz-site","dou-fazenda-ministro","dou-inlabs","dou-inlabs-site","dou-presidencia","dou-presidencia-site",
       "dou-trabalho-previdencia","dou-trabalho-previdencia-site","dou-destaques","rfb-normas","sefsc-legislacao",
       "domsc-ciga","domsc-palhoca-leis","domsc-palhoca-decretos","domsc-saojose-leis","domsc-saojose-decretos"];
-    const lim = limiteDe("legislacao", 150);
+    const lim = limiteDe("legislacao", 150), arqL = verArquivadosLigado("legislacao");
     const itens = await ler("radar_v_fila", {select:"*", fonte_slug:"in.(" + LEG.join(",") + ")", principal:"is.true",
+      arquivado_em:arqL ? "not.is.null" : "is.null",
       order:"data_publicacao.desc.nullslast,capturado_em.desc,id.desc", limit:String(lim)});
     const fontes = [...new Set(itens.map(i => i.fonte_nome))].sort();
     const normas = i => { const b = i.base_legal; if(!b || !Array.isArray(b.normas)) return [];
@@ -1976,7 +1987,7 @@ const TELAS = {
     return `<h1>Legislação nova</h1>
       <p class="sub">As <b>normas</b> que o robô encontrou nas fontes oficiais — Diário Oficial da União, Receita Federal, SEF/SC e diários dos municípios (Palhoça e São José) — e que ainda não viraram assunto. As mais recentes primeiro, para a Artecon sair na frente. “Abrir assunto” leva ao preparo do texto com a IA.</p>
       <div class="linha-filtros"><input type="text" id="busca-legislacao" placeholder="Buscar no título…" data-filtro="legislacao" aria-label="Buscar no título">
-        <select id="fonte-legislacao" data-filtro="legislacao" aria-label="Fonte"><option value="">Todas as fontes</option>${fontes.map(x => `<option>${h(x)}</option>`).join("")}</select></div>
+        <select id="fonte-legislacao" data-filtro="legislacao" aria-label="Fonte"><option value="">Todas as fontes</option>${fontes.map(x => `<option>${h(x)}</option>`).join("")}</select>${toggleArquivados("legislacao")}</div>
       ${itens.length ? `<div id="tab-legislacao">${itens.map(i => `
         <article class="cap" data-fonte="${h(i.fonte_nome)}" data-texto="${h((i.titulo || "").toLowerCase())}" data-id="${i.id}">
           <div>${seloNorma(i)} ${selo(i.orgao, "neutro")} ${selo(ROTULOS.abrangencia[i.abrangencia] || "", "neutro")}
@@ -1984,17 +1995,17 @@ const TELAS = {
           <h3>${h(i.titulo)}</h3>
           ${i.resumo_fonte ? `<p class="sub">${h(i.resumo_fonte.slice(0, 260))}</p>` : ""}
           ${linhaNorma(i)}
-          <div class="acoes">${podeEditar() ? `<button class="btn peq" data-acao="abrir-da-captura" data-id="${i.id}">Abrir assunto</button>
-            <button class="btn peq sec" data-acao="ignorar-captura" data-id="${i.id}">Ignorar</button>` : ""}
-            ${linkFonte(i.url, "abrir a norma ↗")}</div></article>`).join("")}</div>`
-        : `<div class="painel"><p class="sub">Nenhuma norma nova aguardando triagem. Quando o robô capturar legislação nova (Diário Oficial, Receita, SEF/SC ou os municípios), ela aparece aqui.</p></div>`}
+          <div class="acoes">${arqL ? "" : (podeEditar() ? `<button class="btn peq" data-acao="abrir-da-captura" data-id="${i.id}">Abrir assunto</button>
+            <button class="btn peq sec" data-acao="ignorar-captura" data-id="${i.id}">Ignorar</button>` : "")}
+            ${linkFonte(i.url, "abrir a norma ↗")} ${botaoArquivar("radar_capturas", i.id, arqL)}</div></article>`).join("")}</div>`
+        : `<div class="painel"><p class="sub">${arqL ? "Nenhuma legislação arquivada." : "Nenhuma norma nova aguardando triagem. Quando o robô capturar legislação nova (Diário Oficial, Receita, SEF/SC ou os municípios), ela aparece aqui."}</p></div>`}
       ${botaoMais("legislacao", itens.length, lim, "normas")}
       <p class="sub">A mesma legislação pode também aparecer em Capturas; aqui fica só a parte oficial (as normas), separada das notícias, para você achar rápido o que acabou de ser publicado.</p>`;
   },
 
   async assuntos(){
-    const f = E.filtros.assuntos;
-    const lim = limiteDe("assuntos:" + f, 300), params = {select:"*", order:"atualizado_em.desc", limit:String(lim)};
+    const f = E.filtros.assuntos, arqA = verArquivadosLigado("assuntos");
+    const lim = limiteDe("assuntos:" + f, 300), params = {select:"*", order:"atualizado_em.desc", limit:String(lim), arquivado_em:arqA ? "not.is.null" : "is.null"};
     if(f === "abertos") params.status = "not.in.(publicado,ignorado,arquivado)";
     else if(f === "falta_publicar") params.status = "in.(classificado,analisado,selecionado,conteudo_gerado,revisao,aprovado)";   // v0.53.0: em tratamento, ainda não publicado
     else if(f !== "todos") params.status = "eq." + f;
@@ -2017,12 +2028,12 @@ const TELAS = {
         <optgroup label="Visão geral">
           <option value="abertos"${f==="abertos"?" selected":""}>Em andamento</option>
           <option value="todos"${f==="todos"?" selected":""}>Todos</option>
-        </optgroup></select></div>
+        </optgroup></select>${toggleArquivados("assuntos")}</div>
       ${podeEditar() ? `<form class="painel" data-form="novoAssunto"><label for="na-titulo">Novo assunto criado pela equipe (sem captura do robô)</label>
         <div class="linha-filtros" style="margin:0"><input id="na-titulo" type="text" name="titulo" required minlength="5" maxlength="200" placeholder="Título do assunto ou do artigo" style="flex:1;min-width:240px">
         <button class="btn">Criar assunto</button></div>
         <p class="sub" style="margin:6px 0 0">Para os artigos do Informativo Mensal e do site da Artecon. Para o site, inclua depois o texto oficial e a fundamentação.</p></form>` : ""}
-      ${podeEditar() && itens.length ? `<div class="painel" id="lote-preparar"><div class="acoes">
+      ${podeEditar() && itens.length && !arqA ? `<div class="painel" id="lote-preparar"><div class="acoes">
         <b class="sub" style="margin:0">Preparar com IA as notícias marcadas:</b>
         <label class="sub" for="lote-tamanho" style="margin:0">Tamanho do texto</label><select id="lote-tamanho" data-formato>${opcoes(TAMANHO_TEXTO, E.formato || "informativo")}</select>
         <label class="sub" for="lote-imagem" style="margin:0">Imagem</label><select id="lote-imagem">${opcoes(IMAGEM_PREPARO, E.loteImagem || "foto")}</select>
@@ -2038,26 +2049,29 @@ const TELAS = {
           <td>${selo(ROTULOS.relevancia[a.relevancia], a.relevancia==="alta" ? "erro" : a.relevancia==="media" ? "" : "neutro")}</td>
           <td>${seloSituacao(a.situacao_confirmacao)}</td>
           <td>${chipPasso(a.status)}<br><span class="sub">${h(ROTULOS.status[a.status])}</span>${preparandoAgora(a) ? " " + selo("⏳ Preparando com IA","alerta") : ""}${a.em_revisao ? " " + selo("aguarda aprovação","alerta") : ""}</td>
-          <td>${a.evidencias_conferidas}/${a.evidencias} conferidas</td></tr>`).join("")}</table></div>`
-        : `<div class="painel"><p class="sub">Nenhum assunto nesta situação.</p></div>`}
+          <td>${a.evidencias_conferidas}/${a.evidencias} conferidas ${botaoArquivar("radar_assuntos", a.id, arqA)}</td></tr>`).join("")}</table></div>`
+        : `<div class="painel"><p class="sub">${arqA ? "Nenhum assunto arquivado." : "Nenhum assunto nesta situação."}</p></div>`}
       ${botaoMais("assuntos:" + f, itens.length, lim, "assuntos")}`;
   },
 
   async publicacoes(){
+    // v0.133.0 (#1): "Ver arquivados" — mostra só as notícias (conteúdos) arquivadas, para desarquivar com 1 clique; as peças e os pendentes não entram aqui
+    const arqN = verArquivadosLigado("publicacoes");
     const SEL_CONT = "id,titulo,formato,status,assunto_id,aprovado_em,fora_do_site,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url)," +
       "radar_redes_envios(id,canal,situacao,url,publicado_em,excluido_em,erro),radar_site_exclusoes(id,situacao,pedido_em,excluido_em,erro,url)";
     const [regs, aprovados, redesNoAr, pecasRaw] = await Promise.all([
-      ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
-      ler("radar_conteudos", {select:SEL_CONT, status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"}),
-      ler("radar_redes_envios", {select:"conteudo_id", situacao:"eq.publicado", conteudo_id:"not.is.null", limit:"1000"}),   // v0.21.0: o envio da Pauta não tem conteúdo
+      arqN ? [] : ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
+      arqN ? ler("radar_conteudos", {select:SEL_CONT, arquivado_em:"not.is.null", order:"id.desc", limit:"300"})
+           : ler("radar_conteudos", {select:SEL_CONT, status:"eq.aprovado", fora_do_site:"eq.false", arquivado_em:"is.null", order:"aprovado_em.desc", limit:"300"}),
+      arqN ? [] : ler("radar_redes_envios", {select:"conteudo_id", situacao:"eq.publicado", conteudo_id:"not.is.null", limit:"1000"}),   // v0.21.0: o envio da Pauta não tem conteúdo
       // v0.111.0: as PEÇAS da Pauta (reel, carrossel, foto) agendadas ou publicadas também aparecem aqui — é o painel de controle do envio
-      ler("radar_pauta_pecas", {select:"id,data,tipo,formato,assunto,aprovado_em,publicado_manual_em,link_instagram,link_facebook," +
+      arqN ? [] : ler("radar_pauta_pecas", {select:"id,data,tipo,formato,assunto,aprovado_em,publicado_manual_em,link_instagram,link_facebook," +
         "radar_redes_envios(id,canal,situacao,agendado_para,erro,url,publicado_em,excluido_em)", situacao:"eq.aprovada", order:"data.desc", limit:"200"})]);
     // v0.17.0: também o que está publicado e deixou de estar aprovado (texto em revisão, por exemplo): dá para excluir
     const jaListados = new Set(aprovados.map(c => c.id));
-    const outros = [...new Set([...regs.map(r => r.conteudo_id), ...redesNoAr.map(r => r.conteudo_id)])].filter(id => !jaListados.has(id)).slice(0, 200);
-    const lista = aprovados.concat(outros.length ? await ler("radar_conteudos", {select:SEL_CONT, id:"in.(" + outros.join(",") + ")", order:"id.desc"}) : []);
-    const pendentes = aprovados.filter(c => !c.radar_divulgacoes.length && !(c.radar_site_envios || []).some(e => e.situacao === "publicado"));
+    const outros = arqN ? [] : [...new Set([...regs.map(r => r.conteudo_id), ...redesNoAr.map(r => r.conteudo_id)])].filter(id => !jaListados.has(id)).slice(0, 200);
+    const lista = aprovados.concat(outros.length ? await ler("radar_conteudos", {select:SEL_CONT, id:"in.(" + outros.join(",") + ")", arquivado_em:"is.null", order:"id.desc"}) : []);
+    const pendentes = arqN ? [] : aprovados.filter(c => !c.radar_divulgacoes.length && !(c.radar_site_envios || []).some(e => e.situacao === "publicado"));
     const adm = ehAdmin();
     const exclusaoDe = c => [...(c.radar_site_exclusoes || [])].filter(x => x.situacao !== "cancelado").sort((x, y) => y.id - x.id)[0];
     const btnExcluir = (c, canal, envio) => adm ? ` <button class="btn peq perigo" type="button" data-acao="excluir-pub" data-id="${c.id}" data-rede="${canal}"${envio ? ` data-envio="${envio}"` : ""}>Excluir</button>` : "";
@@ -2112,7 +2126,7 @@ const TELAS = {
     const tsConteudo = c => ultimaPub([...(c.radar_divulgacoes || []).map(d => d.publicado_em), ...(c.radar_redes_envios || []).filter(e => e.situacao === "publicado").map(e => e.publicado_em)]) || c.aprovado_em || "";
     const tsPeca = p => ultimaPub([...(p.radar_redes_envios || []).filter(e => e.situacao === "publicado").map(e => e.publicado_em), p.publicado_manual_em]) || ultimaPub((p.radar_redes_envios || []).map(e => e.agendado_para)) || p.data || "";
     const linhaConteudo = c => `<tr data-conteudo="${c.id}">${adm ? `<td><input type="checkbox" class="sel-pub" value="${c.id}" aria-label="Selecionar ${h(c.titulo)}"></td>` : ""}
-            <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button><br><span class="sub">Conteúdo${c.aprovado_em ? " · autorizado em " + dataHora(c.aprovado_em) : ""}${c.status !== "aprovado" ? " · agora: " + h((ROTULOS.conteudo[c.status] || c.status).toLowerCase()) : ""}</span></td>
+            <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button><br><span class="sub">Conteúdo${c.aprovado_em ? " · autorizado em " + dataHora(c.aprovado_em) : ""}${c.status !== "aprovado" ? " · agora: " + h((ROTULOS.conteudo[c.status] || c.status).toLowerCase()) : ""}</span>${adm ? " " + botaoArquivar("radar_conteudos", c.id, arqN) : ""}</td>
             <td data-canal="site">${noSite(c)}</td><td data-canal="instagram">${naRede(c, "instagram")}</td><td data-canal="facebook">${naRede(c, "facebook")}</td></tr>`;
     const linhaPeca = p => `<tr data-peca="${p.id}">${adm ? `<td></td>` : ""}
             <td><button class="titulo-link" data-acao="abrir-peca" data-id="${p.id}">${h(p.assunto ? String(p.assunto).slice(0, 80) : (FORMATO_PECA[p.formato] || "Peça"))}</button><br><span class="sub">${h(FORMATO_PECA[p.formato] || p.formato || "Peça")}${p.aprovado_em ? " · autorizado em " + dataHora(p.aprovado_em) : ""}</span></td>
@@ -2138,10 +2152,11 @@ const TELAS = {
             <label><input type="checkbox" id="exc-facebook" checked> Facebook</label>
             <button class="btn peq perigo" type="button" data-acao="excluir-selecionadas">Excluir as selecionadas</button></div>
           <p class="sub">Marque na primeira coluna (só as notícias; para agir numa peça, use “Abrir a peça”). No Instagram e no Facebook a exclusão é na hora; no site, o robô é acionado na hora e exclui em 1 a 2 minutos (se não der, na próxima rodada automática do GitHub).</p>` : ""}
-        ${linhas.length ? `<div class="linha-filtros"><div class="chips" id="filtro-publicacoes">${chipPub("todas", "Todas", linhas.length)}${chipPub("enviadas", "Enviadas", nEnviadas)}${chipPub("agendadas", "Agendadas", nAgendadas)}</div></div>` : ""}
+        <div class="linha-filtros">${(!arqN && linhas.length) ? `<div class="chips" id="filtro-publicacoes">${chipPub("todas", "Todas", linhas.length)}${chipPub("enviadas", "Enviadas", nEnviadas)}${chipPub("agendadas", "Agendadas", nAgendadas)}</div>` : ""}${toggleArquivados("publicacoes")}</div>
+        ${arqN ? `<p class="sub">Notícias arquivadas (fora das listas). Toque em “Desarquivar” para trazer de volta.</p>` : ""}
         ${linhas.length ? (visiveis.length ? `<div class="rolagem"><table id="tab-canais"><tr>${adm ? `<th><input type="checkbox" id="marcar-todas" aria-label="Selecionar todos"></th>` : ""}<th>Conteúdo / Peça</th><th>Site</th><th>Instagram</th><th>Facebook</th></tr>${visiveis.map(x => x.html).join("")}</table></div>`
             : `<p class="sub">Nenhuma publicação ${fpub === "enviadas" ? "enviada" : "agendada"} nesta lista. Toque em “Todas” para ver tudo.</p>`)
-          : `<p class="sub">Nenhum conteúdo nem peça para mostrar.</p>`}
+          : `<p class="sub">${arqN ? "Nenhuma notícia arquivada." : "Nenhum conteúdo nem peça para mostrar."}</p>`}
         ${excluidas.length ? `<details class="excluidas"><summary>Excluídas do site (${excluidas.length})</summary><ul>${excluidas.map(x =>
           `<li>${data(x.excluido_em)} — <b>${h(x.titulo)}</b> <span class="sub">(${h(x.url)})</span></li>`).join("")}</ul></details>` : ""}</div>
       <div class="painel"><h2>Aprovados ainda não publicados no site</h2>
@@ -4126,6 +4141,15 @@ const ACOES = {
 
   "filtro-fila"(el){ E.filtros.fila = el.dataset.valor; return desenhar(); },
   "filtro-publicacoes"(el){ E.filtros.publicacoes = el.dataset.valor; return desenhar(); },     // v0.130.0: Todas / Enviadas / Agendadas
+  // v0.133.0: arquivar/desarquivar (captura, legislação, assunto, notícia) — só o administrador; o item sai da lista e volta no "Ver arquivados"
+  async "arquivar-item"(el){
+    if(!ehAdmin()){ recado("Só o administrador arquiva.", true); return; }
+    const arquivar = el.dataset.on !== "0";
+    if(arquivar && !confirm("Arquivar este item? Ele sai da lista (dá para voltar atrás em “Ver arquivados”). Nada é apagado.")) return;
+    await rpc("radar_arquivar", {p_tabela:el.dataset.tabela, p_id:Number(el.dataset.id), p_arquivar:arquivar});
+    await desenhar(); recado(arquivar ? "Arquivado." : "Desarquivado.");
+  },
+  "ver-arquivados"(el){ const a = el.dataset.aba; E.verArquivados = E.verArquivados || {}; E.verArquivados[a] = !E.verArquivados[a]; return desenhar(); },
   "mostrar-mais"(el){ const k = el.dataset.chave; E.mais[k] = ((E.mais || {})[k] || 1) + 1; return desenhar(); },
   async "ignorar-lista"(){
     const ids = [...document.querySelectorAll("#tab-fila [data-fonte]")].filter(x => !x.hidden).map(x => Number(x.dataset.id));
@@ -6453,7 +6477,7 @@ const FORMS = {
 /* ----------------------------------------------------------------- eventos */
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
-const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","previa-rede","fechar-previa","usar-titulo","filtro-fila","filtro-publicacoes","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
+const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","previa-rede","fechar-previa","usar-titulo","filtro-fila","filtro-publicacoes","ver-arquivados","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
   "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","abrir-assumir","fechar-assumir","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de",
   "venc-editar","venc-renovei","venc-cancelar","letras","quando-mudar","painel-periodo","dash-periodo-aplicar",
   "carrossel-previa-fechar","acervo-ver-fechar"]);  // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes; v0.45.0: + quando publicar; v0.47.0: + o seletor dia/semana/mês do Painel; v0.48.0: + aplicar o período escolhido; v0.63.0: + fechar a prévia do carrossel e a foto do acervo

@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.132.0"
+    assert pagina.inner_text(".versao") == "v0.133.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.132.0" and data == "20/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.133.0" and data == "20/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2470,7 +2470,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.132.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.133.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3399,7 +3399,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.132.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.133.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -4972,6 +4972,65 @@ def test_publicacoes_filtra_enviadas_agendadas_todas_v130(pagina, limpo):
     pagina.click("#filtro-publicacoes button:has-text('Todas')")
     pagina.wait_for_selector("#filtro-publicacoes .chip.ativa:has-text('Todas')")
     assert linha("Informativo de teste").count() == 1 and linha("Agendada no Instagram").count() == 1
+
+
+def test_arquivar_oculta_e_ver_arquivados_restaura_nas_listas_v133(pagina, limpo):
+    """v0.133.0 (#1): só o administrador tem o botão Arquivar em Legislação, Assuntos e nas notícias de Publicações.
+    Arquivar tira o item da lista (sem apagar); "Ver arquivados" mostra os arquivados, com o botão Desarquivar para voltar.
+    A fixture `pagina` aceita o confirm() do Arquivar."""
+    captura(limpo, titulo="PORTARIA RFB Nº 777, DE 20/11/2026", url="https://www.gov.br/exemplo/portaria-777", slug="rfb-normas")
+    assunto = limpo.execute("insert into radar_assuntos (titulo) values ('Assunto para arquivar') returning id").fetchone()[0]
+    a, c = pronto_para_o_site(limpo)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+
+    # --- Legislação (arquiva radar_capturas; a aba Capturas usa o mesmo mecanismo) ---
+    ir_aba(pagina, "Legislação")
+    norma = lambda: pagina.locator("#tab-legislacao article", has_text="PORTARIA RFB Nº 777")
+    norma().wait_for()
+    assert norma().get_by_text("Arquivar", exact=True).count() == 1
+    norma().get_by_text("Arquivar", exact=True).click()
+    pagina.wait_for_selector("#tab-legislacao article:has-text('PORTARIA RFB Nº 777')", state="detached")
+    pagina.click("button:has-text('Ver arquivados')")
+    norma().wait_for()
+    assert norma().get_by_text("Desarquivar", exact=True).count() == 1                 # volta com 1 clique
+    assert limpo.execute("select arquivado_em is not null from radar_capturas where titulo like 'PORTARIA RFB%'").fetchone()[0]
+
+    # --- Assuntos (arquiva radar_assuntos) ---
+    ir_aba(pagina, "Assuntos")
+    pagina.select_option("#filtro-assuntos", "todos")
+    linha_a = lambda: pagina.locator("#tab-assuntos tr", has_text="Assunto para arquivar")
+    linha_a().wait_for()
+    linha_a().get_by_text("Arquivar", exact=True).click()
+    pagina.wait_for_selector("#tab-assuntos tr:has-text('Assunto para arquivar')", state="detached")
+    pagina.click("button:has-text('Ver arquivados')")
+    linha_a().wait_for()
+    assert linha_a().get_by_text("Desarquivar", exact=True).count() == 1
+    assert limpo.execute("select arquivado_em is not null from radar_assuntos where id = %s", (assunto,)).fetchone()[0]
+
+    # --- Publicações: a notícia (radar_conteudos) ---
+    pagina.click("nav.abas >> text=Publicações")
+    linha_c = lambda: pagina.locator("#tab-canais tr", has_text="Informativo de teste")
+    linha_c().wait_for()
+    linha_c().get_by_text("Arquivar", exact=True).click()
+    pagina.wait_for_selector("#tab-canais tr:has-text('Informativo de teste')", state="detached")
+    pagina.click("button:has-text('Ver arquivados')")
+    linha_c().wait_for()
+    assert linha_c().get_by_text("Desarquivar", exact=True).count() == 1
+    assert limpo.execute("select arquivado_em is not null from radar_conteudos where id = %s", (c,)).fetchone()[0]
+
+
+def test_arquivar_so_aparece_para_o_administrador_v133(pagina, limpo):
+    """v0.133.0 (#1): a editora não vê o botão Arquivar nem "Ver arquivados"."""
+    captura(limpo, titulo="PORTARIA RFB Nº 888, DE 20/11/2026", url="https://www.gov.br/exemplo/portaria-888", slug="rfb-normas")
+    entrar(pagina)                                                         # editora
+    pagina.wait_for_selector("text=Painel do dia")
+    ir_aba(pagina, "Legislação")
+    pagina.wait_for_selector("#tab-legislacao article:has-text('PORTARIA RFB Nº 888')")
+    assert pagina.locator("button:has-text('Arquivar')").count() == 0
+    assert pagina.locator("button:has-text('Ver arquivados')").count() == 0
 
 
 # ------------------------------------------------------------ v0.12.0 — boletim da ITC lido pela função radar-itc
@@ -8536,7 +8595,7 @@ def test_publicacoes_ignora_envio_sem_conteudo(pagina, pauta):
     pagina.wait_for_selector("#resumo-canais")
     assert pagina.locator("main .aviso.erro").count() == 0 and pagina.locator(f"#tab-canais tr[data-conteudo='{c}']").count() == 1
     assert any("conteudo_id=not.is.null" in u for u in pedidos)
-    assert not [u for u in pedidos if "null" in u.replace("not.is.null", "")], pedidos
+    assert not [u for u in pedidos if "null" in u.replace("not.is.null", "").replace("is.null", "")], pedidos   # v0.133.0: arquivado_em=is.null é filtro legítimo; o que se veta é in.(null)
 
 
 def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
