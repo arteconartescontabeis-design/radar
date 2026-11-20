@@ -8623,7 +8623,7 @@ def test_publicacoes_ignora_envio_sem_conteudo(pagina, pauta):
 
 def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
     """v0.21.0: Configurações → Pauta e agenda automática (o 7º bloco): agenda_ligada (true ou false), hora_padrao ("HH:MM"),
-    janela_horas (1 a 48) e hashtags (até 3, com #) são conferidos antes de gravar; na agenda de obrigações, "redes" é true ou false e
+    janela_horas (1 a 48) e hashtags (lista antiga ou objeto por canal, com #) são conferidos antes de gravar; na agenda de obrigações, "redes" é true ou false e
     "fonte" é um texto curto. Com a agenda desligada, a Pauta avisa o administrador."""
     original = dict(limpo.execute("select chave, valor from radar_config where chave in ('pauta', 'obrigacoes')").fetchall())
     try:
@@ -8636,8 +8636,11 @@ def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
         for ruim, aviso in [("[]", "precisa ser um objeto"), ('{"agenda_ligada": "sim"}', "“agenda_ligada” é true ou false"),
                             ('{"hora_padrao": "9h30"}', "“hora_padrao” é a hora de Brasília"), ('{"hora_padrao": "24:00"}', "“hora_padrao” é a hora de Brasília"),
                             ('{"janela_horas": 0}', "“janela_horas” é um número inteiro de 1 a 48"), ('{"janela_horas": 2.5}', "“janela_horas” é um número inteiro"),
-                            ('{"hashtags": ["#a", "#b", "#c", "#d"]}', "“hashtags” é uma lista de até 3"), ('{"hashtags": ["Contabilidade"]}', "“hashtags” é uma lista"),
-                            ('{"hashtags": ["#Conta bilidade"]}', "“hashtags” é uma lista"),
+                            ('{"hashtags": ["#a","#b","#c","#d","#e","#f","#g","#h","#i","#j","#k","#l","#m","#n","#o","#p","#q","#r","#s","#t","#u","#v","#w","#x","#y","#z","#a1","#b1","#c1","#d1","#e1"]}', "“hashtags” é uma lista"),   # lista acima de 30
+                            ('{"hashtags": {"facebook": ["#a","#b","#c","#d","#e","#f","#g","#h","#i","#j","#k"]}}', "“hashtags” é uma lista"),   # Facebook acima de 10
+                            ('{"hashtags": ["Contabilidade"]}', "“hashtags” é uma lista"),
+                            ('{"hashtags": {"instagram": ["#Conta bilidade"]}}', "“hashtags” é uma lista"),
+                            ('{"hashtags": {"site": ["#comcerquilha"]}}', "“hashtags” é uma lista"),
                             ('{"fatos_fixos": "desde 1984"}', "“fatos_fixos” é uma lista de até 20"),
                             ('{"fatos_fixos": [{"informacao": "A Artecon atende empresas desde 1984"}]}', "“fatos_fixos” é uma lista de até 20"),
                             ('{"fatos_fixos": [{"informacao": "desde 1984", "fonte": "Contrato social (conferir)"}]}', "“fatos_fixos” é uma lista de até 20")]:
