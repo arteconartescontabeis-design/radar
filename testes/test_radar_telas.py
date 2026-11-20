@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.127.0"
+    assert pagina.inner_text(".versao") == "v0.128.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.127.0" and data == "19/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.128.0" and data == "20/11/2026" and len(itens) == 4
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2460,7 +2460,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.127.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.128.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3389,7 +3389,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.127.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.128.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7412,6 +7412,46 @@ def test_pauta_gerar_noticia_tambem_dentro_da_peca_v126(pagina, limpo):
     assert pagina.locator(f"form[data-form=peca][data-id='{pid_n}'] .peca-acoes [data-acao=pauta-gerar-noticia]").count() == 1
     abrir_peca(pagina, pid_e, dia_e)
     assert pagina.locator(f"form[data-form=peca][data-id='{pid_e}'] .peca-acoes [data-acao=pauta-gerar-noticia]").count() == 0
+
+
+def test_pauta_cartoes_cores_legenda_e_selo_por_canal_v128(pagina, pauta):
+    """v0.128.0: os cartões da semana ganham cor por situação (cinza planejada, verde publicada); a legenda em cima filtra
+    (clicar oculta a situação); a peça publicada perde o botão Apagar; o "Gerar novas pautas" está na barra da semana. E o
+    selo passa a valer o ÚLTIMO envio de cada canal: uma tentativa excluída e depois republicada fica "Publicada", não "Excluída"."""
+    db = pauta
+    seg = date.fromisoformat(semana_de_hoje())
+    d_plan = (seg + timedelta(days=1)).isoformat()
+    d_pub = (seg + timedelta(days=2)).isoformat()
+    pid_plan = peca_db(db, d_plan, "educativo", "imagem", assunto="Planejada, ninguém mexeu (exemplo)")
+    pid_pub = peca_db(db, d_pub, "educativo", "imagem", assunto="Saiu nas redes (exemplo)")
+    # em cada canal, uma tentativa EXCLUÍDA (id menor) e depois uma PUBLICADA (id maior): o conserto olha o último de cada canal
+    for canal in ("facebook", "instagram"):
+        db.execute("""insert into radar_redes_envios (peca_id, canal, legenda, conteudo_lido_em, situacao, agendado_para)
+                      values (%s, %s, 'Legenda de exemplo para o teste.', now(), 'excluido', '2026-11-18 12:00+00')""", (pid_pub, canal))
+        db.execute("""insert into radar_redes_envios (peca_id, canal, legenda, conteudo_lido_em, situacao, agendado_para, publicado_em, url)
+                      values (%s, %s, 'Legenda de exemplo para o teste.', now(), 'publicado', '2026-11-18 19:00+00', now(), 'https://exemplo/' || %s)""", (pid_pub, canal, canal))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina, seg.isoformat())
+    # as cores por situação
+    assert "st-planejada" in (pagina.get_attribute(f".pauta-dia[data-peca='{pid_plan}']", "class") or "")
+    assert "st-publicada" in (pagina.get_attribute(f".pauta-dia[data-peca='{pid_pub}']", "class") or "")
+    # o selo é "Publicada" (não "Excluída da rede") — o último envio de cada canal manda
+    selos = pagina.inner_text(f".pauta-dia[data-peca='{pid_pub}'] .selos")
+    assert "Publicada" in selos and "Excluída" not in selos
+    # a publicada perde o Apagar; a planejada mantém (administrador)
+    assert pagina.locator(f".pauta-dia[data-peca='{pid_pub}'] [data-acao=pauta-apagar]").count() == 0
+    assert pagina.locator(f".pauta-dia[data-peca='{pid_plan}'] [data-acao=pauta-apagar]").count() == 1
+    # o botão de gerar pautas está na barra da semana (item 6)
+    assert pagina.locator(".pauta-barra [data-acao=pauta-ideias-abrir]").count() == 1
+    # a legenda em cima também é filtro: ocultar "Publicado" tira o cartão publicado; a planejada fica
+    pagina.click(".pauta-legenda .leg-chip.st-publicada")
+    pagina.wait_for_selector(".pauta-legenda .leg-chip.st-publicada:not(.on)")          # o chip (e os cartões) se refez
+    assert pagina.locator(f".pauta-dia[data-peca='{pid_pub}']").count() == 0
+    assert pagina.locator(f".pauta-dia[data-peca='{pid_plan}']").count() == 1
+    pagina.click(".pauta-legenda .leg-chip.st-publicada")              # volta a mostrar
+    pagina.wait_for_selector(".pauta-legenda .leg-chip.st-publicada.on")
+    assert pagina.locator(f".pauta-dia[data-peca='{pid_pub}']").count() == 1
 
 
 def test_pauta_gerar_noticia_respeita_o_formato_carrossel_v125(pagina, limpo):

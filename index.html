@@ -318,6 +318,14 @@ body.letras-grandes{font-size:18px}
 .pauta-semana{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:16px}
 .pauta-dia{background:#fff;border:1px solid var(--linha);border-top:3px solid var(--azul);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .pauta-dia.vazio{background:transparent;border-style:dashed;border-top-width:1px} .pauta-dia.hoje{box-shadow:0 0 0 2px var(--marinho) inset}
+/* v0.128.0: a cor do cartão por situação (cinza sem mexer, azul pronto, verde publicado, vermelho atrasado) e a legenda-filtro em cima */
+.pauta-dia.st-planejada{border-top-color:#B9C0C9} .pauta-dia.st-pronta{border-top-color:var(--azul);background:var(--azul-claro)}
+.pauta-dia.st-publicada{border-top-color:var(--ok);background:var(--ok-fundo)} .pauta-dia.st-atrasada{border-top-color:var(--erro);background:var(--erro-fundo)}
+.pauta-legenda{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 12px}
+.leg-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--linha);background:#fff;border-radius:999px;padding:4px 11px;font:inherit;font-size:.82rem;cursor:pointer;color:var(--cinza);opacity:.55}
+.leg-chip.on{opacity:1;color:var(--marinho);border-color:#C9DDEE} .leg-chip b{font-weight:700} .leg-chip:hover{opacity:.85}
+.leg-chip i{width:11px;height:11px;border-radius:3px;background:#B9C0C9;display:inline-block;flex:0 0 auto}
+.leg-chip.st-pronta i{background:var(--azul)} .leg-chip.st-publicada i{background:var(--ok)} .leg-chip.st-atrasada i{background:var(--erro)}
 /* v0.28.0: "+ Nova peça": o formulário curto no próprio dia (cabe em 375 px) */
 .pauta-dia.nova{border-style:solid} .pauta-nova label{margin-top:6px} .pauta-nova select,.pauta-nova input,.pauta-nova textarea{width:100%;box-sizing:border-box}
 .pauta-dia h3{font-family:"DM Sans",system-ui,sans-serif;font-size:.95rem;margin:0} .pauta-dia p{margin:0} .pauta-dia .acoes{margin-top:auto}
@@ -485,21 +493,26 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.127.0"></script>
-<script src="radar-video.js?v=0.127.0"></script>
-<script src="radar-setor.js?v=0.127.0"></script>
-<script src="radar-respostas.js?v=0.127.0"></script>
+<script src="radar-pauta.js?v=0.128.0"></script>
+<script src="radar-video.js?v=0.128.0"></script>
+<script src="radar-setor.js?v=0.128.0"></script>
+<script src="radar-respostas.js?v=0.128.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.127.0";
+const VERSAO = "0.128.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.128.0", "20/11/2026", [
+    "<b>Cores na Pauta e filtro por situação</b>: cada peça da semana agora mostra em que pé está pela cor — <b>cinza</b> (planejada, ninguém mexeu), <b>azul</b> (pronta/aprovada/agendada), <b>verde</b> (publicada, já saiu) e <b>vermelho</b> (atrasada ou não saiu). Em cima dos cartões há uma <b>legenda</b> que também é <b>filtro</b>: clique para mostrar ou ocultar cada situação. Depois que a peça fica <b>verde (publicada)</b>, o botão <b>Apagar</b> some — o que já saiu não se exclui mais.",
+    "<b>Selo “Publicada” corrigido</b>: uma peça que teve uma tentativa excluída e depois saiu de novo aparecia como “Excluída da rede”. Agora vale o <b>último envio de cada canal</b>: se o último de cada rede saiu, a peça fica <b>Publicada</b>.",
+    "<b>“Gerar novas pautas com IA”</b> passou para o <b>lado do título da semana</b>, mais à mão.",
+    "Administrador: a mudança é só na TELA (index.html + os .js juntos). Nada muda no banco, nas funções Edge nem no robô. Publique tudo junto e aperte Ctrl+F5."]],
   ["0.127.0", "19/11/2026", [
     "<b>Melhores horários da Artecon no Painel</b>: um quadro novo mostra <b>quando a @arteconartescontabeis engaja mais</b> — um <b>mapa de calor</b> por dia da semana e hora (passe o mouse ou o dedo para ver o engajamento de cada faixa), a lista dos <b>horários de maior engajamento</b> e o <b>engajamento por formato</b> (foto, carrossel, reel). Os dados vêm das publicações da própria conta que a <b>aba Setor</b> já lê toda semana pela Meta — <b>sem coletor novo nem agendamento</b>. O engajamento é (curtidas + comentários) ÷ seguidores.",
     "Administrador: a mudança é na TELA e no BANCO (uma função de leitura, radar_horarios_artecon; nenhuma tabela nova obrigatória). Rode o sql/radar-horarios-artecon-v0.127.0.sql (ou de novo o sql/radar-setup-v0.50.0.sql) e publique o index.html com os demais .js. O quadro aparece com dados assim que a aba Setor tiver a conta da Artecon (@arteconartescontabeis) com publicações lidas."]],
@@ -1118,7 +1131,7 @@ const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## 
   "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
 
 const E = { etapa:null, sessao:null, perfil:null, aba:"painel", assunto:null, informativo:null, categorias:[], contagem:{}, filtros:{assuntos:"abertos"}, mais:{},
-           pauta:{semana:null, peca:null, vista:"semana", previa:null, nova:null}, video:{arquivos:{}},       // v0.21.0: a aba Pauta (radar-pauta.js); v0.22.0: o vídeo do reel (radar-video.js)
+           pauta:{semana:null, peca:null, vista:"semana", previa:null, nova:null, verCartao:null}, video:{arquivos:{}},       // v0.21.0: a aba Pauta (radar-pauta.js); v0.22.0: o vídeo do reel (radar-video.js); v0.128.0: verCartao (filtro da legenda)
            venc:{editar:null, renovar:null} };                                                                 // v0.32.0: o quadro de vencimentos
 /* Listas longas: carregam uma leva por vez; "Mostrar mais" traz a seguinte (a contagem vale por tela e filtro) */
 const limiteDe = (chave, base) => base * Math.max(1, (E.mais || {})[chave] || 1);

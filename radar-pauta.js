@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.127.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.128.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -102,19 +102,41 @@ function depoisDeDesenharPauta(){
 
 /* "Publicada" não é situação gravada: sai dos envios (radar_redes_envios) e do registro manual; o resto é a situação da peça. A aprovada
    para a agenda com todos os canais em "Não publicar neste canal" não vai sair: o selo diz isso (não é "Aprovada") */
+// v0.128.0: o estado atual de cada canal — vale o ÚLTIMO envio (maior id). Uma tentativa excluída e depois republicada com sucesso deixa
+// de puxar a peça para "Excluída da rede": o que conta é como cada canal está agora, não a soma de todas as tentativas.
+function enviosAtuais(p){
+  const ult = {};
+  for(const e of (p.radar_redes_envios || [])){
+    if(e.situacao === "cancelado") continue;
+    if(!ult[e.canal] || (e.id || 0) > (ult[e.canal].id || 0)) ult[e.canal] = e;
+  }
+  return Object.values(ult);
+}
 function seloPeca(p){
-  const envios = (p.radar_redes_envios || []).filter(e => e.situacao !== "cancelado"), tem = s => envios.some(e => e.situacao === s);
+  const atuais = enviosAtuais(p), tem = s => atuais.some(e => e.situacao === s);
   if(p.situacao === "cancelada") return selo("Cancelada", "neutro");
-  if(p.situacao === "aprovada" && p.aprovado_modo === "agendar" && !envios.length) return selo("Aprovada, sem canal (não vai sair)", "alerta");
-  if(p.publicado_manual_em || (envios.length && envios.every(e => e.situacao === "publicado"))) return selo("Publicada", "ok");
+  if(p.situacao === "aprovada" && p.aprovado_modo === "agendar" && !atuais.length) return selo("Aprovada, sem canal (não vai sair)", "alerta");
+  if(p.publicado_manual_em || (atuais.length && atuais.every(e => e.situacao === "publicado"))) return selo("Publicada", "ok");
   if(tem("erro")) return selo("Não saiu", "erro");
   if(tem("enviando")) return selo("Publicando", "alerta");
-  const agendados = envios.filter(e => e.situacao === "autorizado");
+  const agendados = atuais.filter(e => e.situacao === "autorizado");
   if(agendados.some(e => new Date(e.agendado_para).getTime() < Date.now() - 20 * 60000)) return selo("Atrasada", "erro");
   if(agendados.length) return selo("Agendada " + horaBrasilia(agendados[0].agendado_para), "ok");
   if(tem("excluido")) return selo("Excluída da rede", "neutro");
   if(p.situacao === "aprovada" && p.aprovado_modo === "manual") return selo("Aprovada (à mão)", "ok");
   return selo(SITUACOES_PAUTA[p.situacao] || p.situacao, {planejada:"neutro", em_producao:"alerta", pronta:"", aprovada:"ok"}[p.situacao] ?? "neutro");
+}
+// v0.128.0: a cor do cartão da semana por situação — cinza "planejada" (sem mexer), azul "pronta" (em produção / pronta / aprovada /
+// agendada), verde "publicada" (saiu) e vermelho "atrasada" (erro ou agendada que passou da hora). Também é a chave do filtro da legenda.
+const CARTAO_CORES = [["publicada", "Publicado"], ["pronta", "Pronto p/ publicar"], ["planejada", "Sem mexer"], ["atrasada", "Atrasada"]];
+function situacaoCartao(p){
+  const atuais = enviosAtuais(p);
+  if(p.publicado_manual_em || (atuais.length && atuais.every(e => e.situacao === "publicado"))) return "publicada";
+  if(atuais.some(e => e.situacao === "erro")) return "atrasada";
+  const agendados = atuais.filter(e => e.situacao === "autorizado");
+  if(agendados.some(e => new Date(e.agendado_para).getTime() < Date.now() - 20 * 60000)) return "atrasada";
+  if(agendados.length || ["pronta", "aprovada", "em_producao"].includes(p.situacao)) return "pronta";
+  return "planejada";    // planejada e cancelada ficam no cinza (o selo já diz "Cancelada")
 }
 /* O selo do termo de uso de imagem de uma pessoa da peça (radar_v_pauta_pessoas: o banco confere no dia da peça). v0.46.0: todos assinam
    (sócios inclusive); sem a dispensa, o selo é só "termo ok" ou o motivo de erro (a coluna termos_dispensados da vista vem sempre falsa). */
@@ -271,6 +293,8 @@ function blocoCronograma(seg, hoje, c){
 /* --------------------------------------------------------------------- a semana */
 async function telaSemana(){
   const ed = podeEditar(), adm = ehAdmin(), hoje = hojeBrasilia();
+  // v0.128.0: o filtro da legenda — quais situações mostrar nos cartões (fica guardado enquanto a aba está aberta)
+  const ver = E.pauta.verCartao || (E.pauta.verCartao = {planejada:true, pronta:true, publicada:true, atrasada:true});
   const seg = E.pauta.semana || segundaDe(hoje), dom = somarDias(seg, 6), faixa = `(data.gte.${seg},data.lte.${dom})`;
   const minutosAtras = m => new Date(Date.now() - m * 60000).toISOString();
   // uma leitura leve (sem as imagens); os selos dos termos só para quem lê as pessoas (o leitor não vê nenhuma)
@@ -292,19 +316,19 @@ async function telaSemana(){
   // v0.28.0: "+ Nova peça" para o administrador, de hoje em diante; v0.64.0: também no dia que já tem peça
   const novaAqui = d => adm && d >= hoje;
   const botaoNova = d => novaAqui(d) ? `<button class="btn peq sec" type="button" data-acao="pauta-nova" data-dia="${d}">+ Nova peça</button>` : "";
-  const blocoPeca = (d, p, extra) => { const quem = pessoasDe(p);
-    return `<article class="pauta-dia${d === hoje ? " hoje" : ""}" data-dia="${d}" data-peca="${p.id}">
+  const blocoPeca = (d, p, extra) => { const quem = pessoasDe(p), cor = situacaoCartao(p);
+    return `<article class="pauta-dia st-${cor}${d === hoje ? " hoje" : ""}" data-dia="${d}" data-peca="${p.id}" data-cor="${cor}">
       <h3>${dataCurta(d)}${p.tipo !== "noticia" && p.tipo !== "sem_post" ? ` · ${h(String(p.hora).slice(0, 5))}` : ""}</h3>
       <div class="selos">${selo(TIPOS_PAUTA[p.tipo] || p.tipo, "neutro")}${p.formato !== "nenhum" ? " " + selo(FORMATOS_PAUTA[p.formato] || p.formato, "neutro") : ""} ${seloPeca(p)}</div>
       ${p.assunto ? `<p class="sub pauta-assunto">${h(cortarPauta(p.assunto, 140))}</p>` : ""}
       ${quem.length ? `<p class="pauta-pessoas">${quem.map(t => `<span>${h(t.nome_na_peca)} ${seloTermo(t)}</span>`).join(" ")}</p>` : ""}
       ${p.tipo === "noticia" ? `<p class="sub">Dia de notícia: gere a publicação com IA aqui, ou publique por <button class="link" type="button" data-acao="aba" data-aba="assuntos">Assuntos</button> ou <button class="link" type="button" data-acao="aba" data-aba="publicacoes">Publicações</button>.</p>` : ""}
-      <div class="acoes"><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir</button>${ed && p.tipo === "noticia" ? `<button class="btn peq verde" type="button" data-acao="pauta-gerar-noticia" data-id="${p.id}">Gerar com IA</button>` : ""}${adm ? `<button class="btn peq perigo" type="button" data-acao="pauta-apagar" data-id="${p.id}">Apagar</button>` : ""}${extra || ""}</div></article>`; };
-  const cartao = d => { const ps = porDia[d] || [];
+      <div class="acoes"><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir</button>${ed && p.tipo === "noticia" ? `<button class="btn peq verde" type="button" data-acao="pauta-gerar-noticia" data-id="${p.id}">Gerar com IA</button>` : ""}${adm && cor !== "publicada" ? `<button class="btn peq perigo" type="button" data-acao="pauta-apagar" data-id="${p.id}">Apagar</button>` : ""}${extra || ""}</div></article>`; };
+  const cartao = d => { const todas = porDia[d] || [], ps = todas.filter(p => ver[situacaoCartao(p)] !== false);
     const formulario = novaAqui(d) && E.pauta.nova === d
       ? `<article class="pauta-dia nova${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3>${formNovaPeca(d, hoje)}</article>` : "";
     if(!ps.length && formulario) return formulario;
-    if(!ps.length) return `<article class="pauta-dia vazio${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3><p class="sub">Sem peça neste dia.</p>${novaAqui(d)
+    if(!ps.length) return `<article class="pauta-dia vazio${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3><p class="sub">${todas.length ? "Nenhuma peça nesta situação." : "Sem peça neste dia."}</p>${novaAqui(d)
       ? `<div class="acoes">${botaoNova(d)}</div>` : ""}</article>`;
     return ps.map((p, i) => blocoPeca(d, p, i === ps.length - 1 && !formulario ? botaoNova(d) : "")).join("") + formulario; };
   const desligada = CONF_PAUTA.pauta && typeof CONF_PAUTA.pauta === "object" && CONF_PAUTA.pauta.agenda_ligada === false;
@@ -314,6 +338,12 @@ async function telaSemana(){
       ? `<div class="aviso alerta" id="agenda-desligada"><b>Agenda automática desligada:</b> a agenda do banco não está instalada neste projeto (sql/radar-redes-agenda.sql, no Supabase → SQL Editor). As peças agendadas só saem se alguém clicar em Publicar agora.</div>`
     : agenda.instalada && agenda.ativa === false
       ? `<div class="aviso alerta" id="agenda-desligada"><b>Agenda automática pausada</b> no pg_cron (cron.job → radar-redes-agenda): as peças agendadas só saem se alguém clicar em Publicar agora.</div>` : "";
+  // v0.128.0: a legenda em cima dos cartões, que também é o filtro (clicar mostra/oculta a situação) — a contagem é da semana aberta
+  const tally = {planejada:0, pronta:0, publicada:0, atrasada:0};
+  for(const p of pecas) tally[situacaoCartao(p)]++;
+  const legenda = `<div class="pauta-legenda" role="group" aria-label="Mostrar cartões por situação">
+    ${CARTAO_CORES.map(([k, r]) => `<button type="button" class="leg-chip st-${k}${ver[k] !== false ? " on" : ""}" data-acao="pauta-ver" data-cor="${k}" aria-pressed="${ver[k] !== false}"><i></i>${r} <b>${tally[k]}</b></button>`).join("")}
+    <span class="sub">clique para mostrar ou ocultar</span></div>`;
   return `<h1>Pauta</h1>
     <p class="sub">O calendário de publicações no Instagram e no Facebook: uma peça por dia. Quem prepara monta a peça e marca como pronta; o administrador aprova, e a agenda do banco publica na hora marcada (ou a peça sai à mão).</p>
     ${blocoCronograma(seg, hoje, crono)}${avisoAgenda}
@@ -329,11 +359,13 @@ async function telaSemana(){
     <div class="pauta-barra"><button class="btn peq sec" type="button" data-acao="pauta-semana" data-passo="-1">← Semana anterior</button>
       <button class="btn peq sec" type="button" data-acao="pauta-semana" data-passo="0">Esta semana</button>
       <button class="btn peq sec" type="button" data-acao="pauta-semana" data-passo="1">Próxima semana →</button>
-      <b id="pauta-semana-titulo">Semana de ${seg.slice(8, 10)}/${seg.slice(5, 7)} a ${dom.slice(8, 10)}/${dom.slice(5, 7)}/${dom.slice(0, 4)}</b></div>
+      <b id="pauta-semana-titulo">Semana de ${seg.slice(8, 10)}/${seg.slice(5, 7)} a ${dom.slice(8, 10)}/${dom.slice(5, 7)}/${dom.slice(0, 4)}</b>
+      <button class="btn peq verde" type="button" data-acao="pauta-ideias-abrir" style="margin-left:auto">✨ Gerar novas pautas com IA</button></div>
+    ${E.pauta.ideiasForm || E.pauta.ideias ? `<div class="painel" id="pauta-ideias">
+      <p class="sub" style="margin:0 0 4px">Preenche os próximos <b>dias úteis livres</b> com assuntos sugeridos pela IA (um por dia). Escolha quantos dias quer gerar — 1 para uma pauta só, ou vários de uma vez.${adm ? "" : " As sugestões aparecem para você conferir; só o administrador adiciona ao calendário."}</p>
+      ${E.pauta.ideiasForm ? blocoFormIdeias() : ""}${E.pauta.ideias ? blocoListaIdeias(E.pauta.ideias, adm) : ""}</div>` : ""}
+    ${legenda}
     <div class="pauta-semana">${Array.from({length:7}, (_, i) => cartao(somarDias(seg, i))).join("")}</div>
-    <div class="painel" id="pauta-ideias"><div class="acoes" style="margin:0"><button class="btn sec" type="button" data-acao="pauta-ideias-abrir">✨ Gerar novas pautas com IA</button></div>
-      <p class="sub" style="margin:4px 0 0">Preenche os próximos <b>dias úteis livres</b> com assuntos sugeridos pela IA (um por dia). Escolha quantos dias quer gerar — 1 para uma pauta só, ou vários de uma vez.${adm ? "" : " As sugestões aparecem para você conferir; só o administrador adiciona ao calendário."}</p>
-      ${E.pauta.ideiasForm ? blocoFormIdeias() : ""}${E.pauta.ideias ? blocoListaIdeias(E.pauta.ideias, adm) : ""}</div>
     ${ed ? `<div class="painel pauta-ferramentas"><div class="acoes" style="margin:0"><button class="btn sec" type="button" data-acao="pauta-pessoas">Pessoas e termos</button>
       <button class="btn sec" type="button" data-acao="pauta-relatorios-reels">Relatórios dos reels</button></div>
       <p class="sub" style="margin:4px 0 0">Relatórios dos reels: baixa o Excel (em ordem de data, com as colunas Data, Setor, Quem grava e Título — o filtro do cabeçalho mostra um setor só) e o Word (o roteiro completo de cada reel, por setor), dos reels agendados de hoje em diante. Eles têm nomes da equipe: não compartilhe fora do escritório.</p>
@@ -1888,6 +1920,9 @@ const PAUTA = {
         recado("Assunto criado sem legislação. Adicione o texto oficial (ou use “Verificar em fontes oficiais”) e clique em “Preparar com IA”.", "aviso");
       }
     },
+    // v0.128.0: a legenda-filtro dos cartões — liga/desliga uma situação (fica guardado enquanto a aba está aberta)
+    "pauta-ver"(el){ const c = el.dataset.cor, v = E.pauta.verCartao || (E.pauta.verCartao = {planejada:true, pronta:true, publicada:true, atrasada:true});
+      v[c] = v[c] === false; return desenhar(); },
     // v0.124.0: gerar novas pautas com IA (botão visível a todos; só o administrador adiciona ao calendário)
     "pauta-ideias-abrir"(){ E.pauta.ideiasForm = true; E.pauta.ideias = null; return desenhar(); },
     "pauta-ideias-cancelar"(){ E.pauta.ideiasForm = false; E.pauta.ideias = null; return desenhar(); },
