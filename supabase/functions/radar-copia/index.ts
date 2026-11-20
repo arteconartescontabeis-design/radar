@@ -45,7 +45,7 @@
 // dados. A resposta ao administrador traz os tempos de cada etapa.
 // =====================================================================
 
-const VERSAO = "0.63.0";             // v0.63.0: + radar_fotos_acervo na cópia (o acervo de fotos da Artecon); v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.35.0: + as 3 tabelas do Módulo Respostas Automáticas
+const VERSAO = "0.128.0";            // v0.128.0: + radar_metricas na cópia (métricas da conta própria, reservada; v0.125.0); v0.63.0: + radar_fotos_acervo na cópia (o acervo de fotos da Artecon); v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.35.0: + as 3 tabelas do Módulo Respostas Automáticas
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
