@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.129.0"
+    assert pagina.inner_text(".versao") == "v0.130.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.129.0" and data == "20/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.130.0" and data == "20/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2460,7 +2460,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.129.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.130.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3389,7 +3389,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.129.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.130.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -4931,6 +4931,37 @@ def test_publicacoes_mostram_o_que_foi_e_o_que_falta_em_cada_canal(pagina, limpo
     assert linha("Segundo informativo").locator("[data-canal=site]").inner_text() == "Falta"
     assert linha("Segundo informativo").locator("[data-canal=instagram]").inner_text() == "Falta"
     assert linha("Segundo informativo").locator("[data-canal=facebook]").inner_text() == "Falta"
+
+
+def test_publicacoes_filtra_enviadas_agendadas_todas_v130(pagina, limpo):
+    """v0.130.0: no quadro de Publicações, três botões separam o que já saiu (Enviadas) do que está agendado e ainda não saiu
+    (Agendadas), ou mostram tudo (Todas)."""
+    a, c = pronto_para_o_site(limpo)
+    a2 = limpo.execute("insert into radar_assuntos (titulo) values ('Agendada no IG') returning id").fetchone()[0]
+    c2 = limpo.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por) "
+                       "values (%s, 'informativo', 'Agendada no Instagram', 'Texto.', 'em_revisao', 'humano') returning id", (a2,)).fetchone()[0]
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id in (%s, %s)", (c, c2))
+    limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/x', current_date)", (c,))   # c: publicada no site -> Enviada
+    limpo.execute("insert into radar_redes_envios (conteudo_id, canal, legenda, conteudo_lido_em, situacao) "
+                  "values (%s, 'instagram', 'Legenda de exemplo para o teste.', now(), 'autorizado')", (c2,))                                               # c2: autorizada, não saiu -> Agendada
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-canais")
+    linha = lambda t: pagina.locator("#tab-canais tr", has_text=t)
+    # Enviadas: mostra a publicada, esconde a agendada
+    pagina.click("#filtro-publicacoes button:has-text('Enviadas')")
+    pagina.wait_for_selector("#filtro-publicacoes .chip.ativa:has-text('Enviadas')")
+    assert linha("Informativo de teste").count() == 1 and linha("Agendada no Instagram").count() == 0
+    # Agendadas: mostra a agendada, esconde a enviada
+    pagina.click("#filtro-publicacoes button:has-text('Agendadas')")
+    pagina.wait_for_selector("#filtro-publicacoes .chip.ativa:has-text('Agendadas')")
+    assert linha("Agendada no Instagram").count() == 1 and linha("Informativo de teste").count() == 0
+    # Todas: as duas aparecem
+    pagina.click("#filtro-publicacoes button:has-text('Todas')")
+    pagina.wait_for_selector("#filtro-publicacoes .chip.ativa:has-text('Todas')")
+    assert linha("Informativo de teste").count() == 1 and linha("Agendada no Instagram").count() == 1
 
 
 # ------------------------------------------------------------ v0.12.0 — boletim da ITC lido pela função radar-itc
