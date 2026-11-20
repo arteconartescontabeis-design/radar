@@ -7161,7 +7161,8 @@ select c.id, c.fonte_id, f.slug as fonte_slug, f.nome as fonte_nome, f.orgao, f.
            and (r.duplicata_de = c.id or r.id = c.duplicata_de or (c.duplicata_de is not null and r.duplicata_de = c.duplicata_de))
            and coalesce((r.base_legal->>'total')::int, 0) > 0
            and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = r.id)
-         order by (r.id = c.duplicata_de) desc, r.id limit 1) as base_legal_repeticao
+         order by (r.id = c.duplicata_de) desc, r.id limit 1) as base_legal_repeticao,
+       c.arquivado_em                                  -- v0.133.0: arquivar a captura/legislação (ocultar da lista) — coluna no fim (create or replace view)
 from public.radar_capturas c
 join public.radar_fontes f on f.id = c.fonte_id
 left join lateral (
@@ -7181,7 +7182,7 @@ create or replace view public.radar_v_em_alta
 with (security_invoker = true) as
 select f.*
   from public.radar_v_fila f
- where f.principal and f.relevancia <> 'baixa'
+ where f.principal and f.relevancia <> 'baixa' and f.arquivado_em is null   -- v0.133.0: a arquivada não entra em "Em alta"
    and (f.nota_grupo is null or f.nota_grupo >= coalesce((select case when jsonb_typeof(c.valor->'nota_corte') = 'number'
                                                                then least(greatest((c.valor->>'nota_corte')::numeric, 0), 10) end
                                                       from public.radar_config c where c.chave = 'relevancia'), 6))
@@ -7207,7 +7208,8 @@ select a.id, a.titulo, a.categoria, a.subcategoria, a.abrangencia, a.relevancia,
           join public.radar_fontes f on f.id = c.fonte_id where ac.assunto_id = a.id) as orgaos,
        -- v0.54.0: a data em que a informação foi capturada da fonte (a primeira captura do assunto), para a lista de Assuntos
        (select min(c.capturado_em) from public.radar_assunto_capturas ac
-          join public.radar_capturas c on c.id = ac.captura_id where ac.assunto_id = a.id) as capturado_em
+          join public.radar_capturas c on c.id = ac.captura_id where ac.assunto_id = a.id) as capturado_em,
+       a.arquivado_em                                  -- v0.133.0: arquivar o assunto (ocultar da lista)
 from public.radar_assuntos a;
 
 -- Consumo da IA no mês corrente (uma linha)
