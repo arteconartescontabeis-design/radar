@@ -71,7 +71,9 @@ const TABELAS = [
   // v0.63.0: o acervo de fotos da Artecon (grupo e nome de cada foto; as imagens em si já vão em radar_imagens)
   "radar_fotos_acervo",
   "radar_ia_uso", "radar_imagens", "radar_informativo_itens", "radar_informativos", "radar_instalacoes", "radar_itc_lidos",
-  "radar_lembretes", "radar_normas", "radar_pauta_pecas", "radar_perfis", "radar_pessoas", "radar_pessoas_termos",
+  "radar_lembretes",
+  // v0.125.0: métricas da conta própria (reservada; nenhum dado pessoal, nenhuma chave — vai à cópia como as demais)
+  "radar_metricas", "radar_normas", "radar_pauta_pecas", "radar_perfis", "radar_pessoas", "radar_pessoas_termos",
   // v0.57.0: o uso do corretor de polimento (minutos e custo por chamada; nenhuma chave, nenhum dado pessoal)
   "radar_polimento_uso", "radar_redes_envios",
   // v0.35.0: as 3 do Módulo Respostas Automáticas (gatilhos, registro dos comentários e contas ligadas: sem token nenhum)
