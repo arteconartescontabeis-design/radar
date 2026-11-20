@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.131.0"
+    assert pagina.inner_text(".versao") == "v0.132.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.131.0" and data == "20/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.132.0" and data == "20/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2397,6 +2397,14 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     assert limpo.execute("select count(*) from radar_informativo_itens").fetchone()[0] == 1
     pagina.click("text=Incluir artigo")
     pagina.wait_for_selector("#tab-itens tr >> nth=2")
+    # v0.132.0: a primeira notícia já foi publicada no site -> o informativo mostra o link para ler on-line
+    # (o gatilho radar_fn_divulgacao exige o assunto confirmado oficialmente; aqui só queremos a linha da divulgação)
+    limpo.execute("alter table radar_divulgacoes disable trigger all")
+    try:
+        limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) "
+                      "select id, 'https://artecon.cnt.br/news/view/cgsn-simples', current_date from radar_conteudos where titulo like 'CGSN prorroga%'")
+    finally:
+        limpo.execute("alter table radar_divulgacoes enable trigger all")
 
     # página de impressão no padrão do informativo
     iid = limpo.execute("select id from radar_informativos").fetchone()[0]
@@ -2418,6 +2426,8 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     assert art.locator("table.tabela-texto tr").count() == 3 and art.locator("table.tabela-texto th").count() == 2
     assert art.locator("table.tabela-texto b").count() == 0 and "<b>x</b>" in art.inner_text()      # HTML digitado aparece como texto
     assert "Texto elaborado por: Marcos Vinicius Martins da Silva" in art.inner_text() and "Fonte: Receita Federal" in art.inner_text()
+    # v0.132.0: o link para a publicação on-line no fim do artigo (a notícia já saiu no site)
+    assert "Leia esta notícia no site:" in art.inner_text() and art.locator("a[href='https://artecon.cnt.br/news/view/cgsn-simples']").count() == 1
     assert pagina.locator("section.artigo").nth(1).locator(".credito").count() == 0
     fale = pagina.inner_text("section.fale")
     assert "FALE CONOSCO" in fale and "artecon@artecon.cnt.br" in fale and "48-3242-0530" in fale
@@ -2460,7 +2470,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.131.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.132.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3389,7 +3399,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.131.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.132.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
