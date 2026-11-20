@@ -77,6 +77,9 @@ def test_leitor_e_editor_veem_o_painel_sem_os_controles(tela, email):
     # entre a Pauta e as Fontes (a editora tem a aba Vídeo entre a Pauta e a Setor; a v0.35.0 pôs a Respostas depois da Setor)
     assert abas.index("Pauta") < abas.index("Setor") < abas.index("Fontes")
     assert ETICA in tela.inner_text("#setor-etica")
+    # v0.131.0: o resumo no alto e as frases em linguagem do dia a dia em cada quadro
+    assert "compara o Instagram da Artecon com outros escritórios" in tela.inner_text("#setor-intro")
+    assert "escolher o formato do próximo post" in tela.inner_text("#setor-formatos")
     resumo = tela.inner_text("#setor-resumo")
     for trecho in ("Contas analisadas", "3", "1,4", "Artecon 0,7", "2,00%", "Foto", "69%"):
         assert trecho in resumo, trecho

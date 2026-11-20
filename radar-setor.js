@@ -13,7 +13,7 @@
    recado, desenhar, ehAdmin, E, ErroApi, VERSAO, $) só quando são chamadas. Quem confere quem pode o quê é o banco.
    A busca por hashtag fica desligada (Configuração da aba) até a Meta aprovar o recurso Instagram Public Content Access.
    ==================================================================== */
-const SETOR_VERSAO = "0.130.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const SETOR_VERSAO = "0.131.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 // o que só a tela guarda: o setor escolhido, o período, o quadro do administrador aberto e o formulário de setor novo
 let SETOR_E = {setor: null, dias: 90, gerir: false, novo: false};
@@ -86,6 +86,7 @@ async function telaSetor(){
   }catch(e){ if(setorSemBanco(e)) return SETOR_SEM_BANCO; throw e; }
   const setor = setores.find(s => s.id === SETOR_E.setor);
   const topo = `${setorEstilo()}<h1>Setor no Instagram</h1>
+    <p class="sub" id="setor-intro">Aqui você compara o Instagram da Artecon com outros escritórios de contabilidade: quanto cada um publica, o que engaja mais, quando postar e sobre o quê — para decidir formato, tema e horário dos nossos posts. Nunca para copiar ou citar concorrente.</p>
     <div class="aviso alerta" id="setor-etica"><b>${SETOR_ETICA}</b> Não reproduza texto, arte ou roteiro de outro escritório e não cite nem compare escritórios nos posts.</div>`;
   if(!setor){
     return `<div id="setor">${topo}${ehAdmin() ? setorFormNovo(true)
@@ -108,6 +109,7 @@ async function telaSetor(){
 function setorEstilo(){
   return `<style>
 #setor .chips{margin:8px 0}
+#setor .setor-lead{margin:2px 0 8px;color:var(--marinho);font-size:.95rem}
 #setor .cartao{cursor:default}
 #setor .cartao small{display:block;font-size:.8rem;color:#5A636D;margin-top:2px}
 #setor .setor-situacao{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:6px 0 14px}
@@ -170,7 +172,7 @@ function setorCorpo(p){
   }
   const mais = r.formato_mais_usado;
   const quadro = (titulo, valor, extra) => `<div class="cartao"><span>${titulo}</span><b>${valor}</b>${extra ? `<small>${extra}</small>` : ""}</div>`;
-  const resumo = `<div class="cartoes" id="setor-resumo">
+  const resumo = `<p class="setor-lead">Quantas contas acompanhamos e os números médios do grupo — o ponto de partida.</p><div class="cartoes" id="setor-resumo">
     ${quadro("Contas analisadas", h(r.com_dados ?? 0), `${h(r.elegiveis ?? 0)} com dados suficientes para o engajamento`)}
     ${quadro("Publicações por semana", h(setorNum(r.setor_posts_semana)), `setor (mediana das contas)${p.artecon ? ` · Artecon ${h(setorNum(r.artecon_posts_semana))}` : ""}`)}
     ${quadro("Engajamento por publicação", h(setorPct(r.setor_engajamento)), `setor (mediana)${p.artecon ? ` · Artecon ${h(setorPct(r.artecon_engajamento))}` : ""}`)}
@@ -209,6 +211,7 @@ function setorSerie(p){
   const tabela = `<details><summary>Ver em tabela</summary><div class="rolagem"><table><tr><th>${semana ? "Semana" : "Mês"}</th><th>Setor (por conta)</th><th>Contas</th><th>Artecon</th></tr>${s.map(x =>
     `<tr><td>${h(semana ? setorDiaMes(x.inicio) + " a " + setorDiaMes(x.fim) : setorMes(x.inicio))}${x.em_andamento ? " (em andamento)" : ""}</td><td class="num">${h(setorNum(x.setor, 1))}</td><td class="num">${h(x.contas)}</td><td class="num">${h(x.artecon ?? "—")}</td></tr>`).join("")}</table></div></details>`;
   return `<div class="painel" id="setor-semanas"><h2>Publicações por ${unidade}</h2>
+    <p class="setor-lead">Quem publica com que frequência — dá para ver se a Artecon está no ritmo do setor.</p>
     <p class="sub">Barras: a média de publicações por conta do setor em cada ${unidade} (só as contas cujas publicações lidas cobrem o período inteiro). ${p.artecon ? "Pontos: a Artecon." : ""}</p>
     <svg class="setor-grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="Publicações por ${unidade}: setor e Artecon">${g}</svg>
     <div class="setor-legenda"><span><span class="setor-chave" style="background:${SETOR_AZUL}"></span>Setor (média por conta)</span>${p.artecon ? `<span><span class="setor-chave ponto" style="background:${SETOR_ARTECON}"></span>Artecon</span>` : ""}</div>${tabela}</div>`;
@@ -224,6 +227,7 @@ function setorFormatosHtml(p){
   const ef = (p.engajamento_formato || []).filter(x => x.n > 0);
   const rvf = p.reel_vs_foto || {};
   return `<div class="painel" id="setor-formatos"><h2>Mistura de formatos</h2>
+    <p class="setor-lead">Quanto cada um usa reel, carrossel e foto — e qual rende mais engajamento. Ajuda a escolher o formato do próximo post.</p>
     ${pilha("Setor", f.setor)}${pilha("Artecon", f.artecon)}${legenda}
     ${ef.length ? `<p>Engajamento típico por formato (contas com dados suficientes): ${ef.map(x => `${h(SETOR_FORMATOS[x.formato] || x.formato)} <b>${h(setorPct(x.mediana))}</b> <span class="sub">(${h(x.n)})</span>`).join(" · ")}</p>` : ""}
     ${rvf.contas >= 3 ? `<p>Na mesma conta, o reel ficou acima da foto em <b>${h(rvf.acima)} de ${h(rvf.contas)}</b> contas.</p>` : ""}
@@ -242,6 +246,7 @@ function setorEngajamento(p){
     <span class="setor-trilho"><span class="setor-barra" style="width:${pos(c.engajamento)}%;background:${c.propria ? SETOR_ARTECON : c.elegivel ? SETOR_AZUL : SETOR_CINZA}" title="${h(`@${c.nome}: ${setorPct(c.engajamento)} por publicação (mediana de ${c.n_engajamento} publicação(ões))`)}"></span>${med !== null && med !== undefined ? `<span class="setor-mediana" style="left:${pos(med)}%" title="Mediana do setor: ${h(setorPct(med))}"></span>` : ""}</span>
     <span class="setor-valor">${h(setorPct(c.engajamento))}${c.elegivel ? "" : ' <span class="sub">poucos dados</span>'}</span></div>`;
   return `<div class="painel" id="setor-engajamento"><h2>Engajamento por publicação, por conta</h2>
+    <p class="setor-lead">Quem tem o público mais ativo (curtidas + comentários em relação aos seguidores). A barra da Artecon aparece em destaque.</p>
     <p class="sub">(curtidas + comentários) ÷ seguidores, a mediana das publicações do período de cada conta. A linha tracejada é a mediana do setor (${h(setorPct(med))}). Em cinza, as contas com menos de 100 seguidores ou menos de 5 publicações com curtidas visíveis: entram na tabela, mas não nas medianas.</p>
     ${boas.map(linha).join("")}${poucas.map(linha).join("")}</div>`;
 }
@@ -259,6 +264,7 @@ function setorDiasHoras(p){
     ${(() => { const x = (dh.dias || []).find(z => z.dia === d); return casa(x, `${SETOR_DIAS[d]}: ${x ? x.n : 0} publicação(ões)`); })()}</tr>`).join("");
   const rodape = `<tr><th>todos</th>${SETOR_FAIXAS.map((f, i) => { const x = (dh.faixas || []).find(z => z.faixa === i); return casa(x, `${f}: ${x ? x.n : 0} publicação(ões)`); }).join("")}<td></td></tr>`;
   return `<div class="painel" id="setor-dias-horas"><h2>Melhores dias e horários (Brasília)</h2>
+    <p class="setor-lead">Os dias e horas em que os posts costumam render mais — para agendar melhor os nossos.</p>
     <p class="sub">Cada publicação comparada com o engajamento típico da própria conta: 1,3× = 30% acima do normal daquela conta. Com menos de 5 publicações na casa, “—”. A diferença costuma ser pequena; formato e tema pesam mais.</p>
     <div class="rolagem"><table class="setor-mapa"><tr><th></th>${SETOR_FAIXAS.map(f => `<th>${f}</th>`).join("")}<th>dia todo</th></tr>${linhas}${rodape}</table></div>
     <div class="setor-legenda"><span><span class="setor-chave" style="background:#FBE3D6"></span>abaixo de 0,8×</span><span><span class="setor-chave" style="background:#F1F1EF"></span>0,8× a 1,2× (o normal)</span>
@@ -271,6 +277,7 @@ function setorTemas(p){
   if(!ts.length) return "";
   const maior = Math.max(1, ...ts.map(t => Number(t.pct) || 0), ...ts.map(t => Number(t.artecon_pct) || 0));
   return `<div class="painel" id="setor-temas"><h2>Temas mais frequentes</h2>
+    <p class="setor-lead">Sobre o que o setor mais fala e o que mais engaja — ideias de pauta.</p>
     <p class="sub">Classificação automática por palavras (pode errar); uma publicação pode ter mais de um tema. “1,1× o típico”: o engajamento das publicações do tema comparado com o normal de cada conta.${p.artecon ? " A marca escura é a Artecon." : ""}</p>
     ${ts.map(t => `<div class="setor-barra-linha tema"><span class="setor-rotulo" title="${h(t.tema)}">${h(t.tema)}</span>
       <span class="setor-trilho"><span class="setor-barra" style="width:${Number(t.pct) / maior * 100}%;background:${SETOR_AZUL}" title="${h(`${t.tema}: ${t.n} publicação(ões) do setor (${setorNum(t.pct, 0)}%)`)}"></span>${p.artecon && t.artecon_pct !== null && t.artecon_pct !== undefined ? `<span class="setor-marca" style="left:${Number(t.artecon_pct) / maior * 100}%" title="${h(`Artecon: ${setorNum(t.artecon_pct, 0)}%`)}"></span>` : ""}</span>
@@ -287,6 +294,7 @@ function setorMelhores(p){
   const m = p.melhores || [], a = p.melhores_artecon || [];
   if(!m.length && !a.length) return "";
   return `<div class="painel" id="setor-melhores"><h2>Publicações de maior engajamento</h2>
+    <p class="setor-lead">Os posts que mais bombaram no período (só o link e um trecho) — para se inspirar.</p>
     <p class="sub">${SETOR_ETICA} No máximo 3 por conta; só um trecho do começo da legenda — o resto, no Instagram.</p>
     <ol class="setor-melhores">${m.map(setorPostHtml).join("")}</ol>
     ${a.length ? `<h3>As melhores da Artecon</h3><ol class="setor-melhores" id="setor-melhores-artecon">${a.map(setorPostHtml).join("")}</ol>` : ""}</div>`;
