@@ -186,7 +186,12 @@ const dataExtenso = iso => `${String(iso).slice(8,10)} de ${mesExtenso(iso)}`;
 const semPonto = t => String(t || "").trim().replace(/[.;]+$/, "");
 // v0.7.0: o link da publicação on-line no site (a divulgação mais recente do conteúdo), no fim do artigo
 const linkSite = a => { const d = [...(a.radar_divulgacoes || [])].filter(x => x && x.url).sort((x, y) => String(y.publicado_em).localeCompare(String(x.publicado_em)))[0];
-  return d ? `<p class="credito credito-site">Leia esta notícia no site: <a href="${h(d.url)}" target="_blank" rel="noopener noreferrer">${h(d.url)}</a></p>` : ""; };
+  if(!d) return "";
+  // v0.135.0: não imprime link para página que pode ter saído do ar. Esconde se há exclusão pendente, ou se a última exclusão concluída é mais nova que a publicação.
+  const exc = (a.radar_site_exclusoes || []), pendente = exc.some(x => x && ["pedido", "excluindo"].includes(x.situacao));
+  const tirada = exc.filter(x => x && x.situacao === "excluido" && x.excluido_em).sort((x, y) => String(y.excluido_em).localeCompare(String(x.excluido_em)))[0];
+  if(pendente || (tirada && String(tirada.excluido_em) > String(d.publicado_em))) return "";
+  return `<p class="credito credito-site">Leia esta notícia no site: <a href="${h(d.url)}" target="_blank" rel="noopener noreferrer">${h(d.url)}</a></p>`; };
 const imagemValida = d => /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(String(d || ""));
 const telefoneLimpo = t => String(t).replace(/[^\d+]/g, "");
 
@@ -241,7 +246,7 @@ async function iniciar(){
   try{
     [[inf], itens, conf] = await Promise.all([
       ler("radar_informativos", {select:"*", id:"eq." + id}),
-      ler("radar_informativo_itens", {select:"ordem,conteudo_id,radar_conteudos(id,titulo,corpo,status,autor,fonte_credito,imagem_id,atualizado_em,radar_divulgacoes(url,publicado_em))", informativo_id:"eq." + id, order:"ordem,conteudo_id"}),
+      ler("radar_informativo_itens", {select:"ordem,conteudo_id,radar_conteudos(id,titulo,corpo,status,autor,fonte_credito,imagem_id,atualizado_em,radar_divulgacoes(url,publicado_em),radar_site_exclusoes(situacao,excluido_em))", informativo_id:"eq." + id, order:"ordem,conteudo_id"}),
       ler("radar_config", {select:"chave,valor", chave:"in.(fale_conosco,assinatura)"})]);
     if(!inf) return entrada("Informativo não encontrado, ou o seu usuário não tem acesso ao Radar.");
     const ids = [...new Set(itens.map(x => x.radar_conteudos.imagem_id).filter(Boolean))];

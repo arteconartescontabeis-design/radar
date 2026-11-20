@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.134.0"
+    assert pagina.inner_text(".versao") == "v0.135.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.134.0" and data == "20/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.135.0" and data == "20/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2429,6 +2429,13 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     # v0.132.0: o link para a publicação on-line no fim do artigo (a notícia já saiu no site)
     assert "Leia esta notícia no site:" in art.inner_text() and art.locator("a[href='https://artecon.cnt.br/news/view/cgsn-simples']").count() == 1
     assert pagina.locator("section.artigo").nth(1).locator(".credito").count() == 0
+    # v0.135.0 (varredura): o link só sai se a publicação no site ainda estiver viva — some com exclusão pendente ou já concluída (mais nova que a publicação)
+    viva = {"radar_divulgacoes": [{"url": "https://x/y", "publicado_em": "2026-10-01"}], "radar_site_exclusoes": []}
+    tirada = {"radar_divulgacoes": [{"url": "https://x/y", "publicado_em": "2026-10-01"}], "radar_site_exclusoes": [{"situacao": "excluido", "excluido_em": "2026-10-05"}]}
+    pendente = {"radar_divulgacoes": [{"url": "https://x/y", "publicado_em": "2026-10-01"}], "radar_site_exclusoes": [{"situacao": "pedido"}]}
+    republicada = {"radar_divulgacoes": [{"url": "https://x/y", "publicado_em": "2026-10-10"}], "radar_site_exclusoes": [{"situacao": "excluido", "excluido_em": "2026-10-05"}]}
+    assert pagina.evaluate("a => linkSite(a)", viva) != "" and pagina.evaluate("a => linkSite(a)", republicada) != ""
+    assert pagina.evaluate("a => linkSite(a)", tirada) == "" and pagina.evaluate("a => linkSite(a)", pendente) == ""
     fale = pagina.inner_text("section.fale")
     assert "FALE CONOSCO" in fale and "artecon@artecon.cnt.br" in fale and "48-3242-0530" in fale
     assert "Palhoça, SC, 01 de outubro de 2026." in fale and "Artecon Artes Contábeis ME" in fale and "Cleiver Gonçalves" in fale
@@ -4336,6 +4343,21 @@ def test_hashtags_por_canal_validacao_e_selecao_v134(pagina):
     assert pagina.evaluate("hashtagsPauta('instagram')") == ["#x", "#y"] and pagina.evaluate("hashtagsPauta('facebook')") == ["#x", "#y"]
 
 
+def test_situacao_cartao_peca_excluida_da_rede_fica_atrasada_v135(pagina):
+    """v0.135.0 (varredura): uma peça tirada da rede (último envio de cada canal = excluído) fica VERMELHA (atrasada), como o selo
+    “Excluída da rede”, nunca azul “pronta” — senão o filtro da legenda a esconderia sob “Pronto p/ publicar”."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    cor = lambda p: pagina.evaluate("p => situacaoCartao(p)", p)
+    assert cor({"situacao": "aprovada", "radar_redes_envios": [{"canal": "instagram", "situacao": "excluido", "id": 5}]}) == "atrasada"
+    assert cor({"situacao": "aprovada", "radar_redes_envios": [{"canal": "instagram", "situacao": "publicado", "id": 5}]}) == "publicada"
+    assert cor({"situacao": "aprovada", "radar_redes_envios": []}) == "pronta"
+    # uma agendada futura continua azul mesmo se outro canal foi excluído
+    futuro = pagina.evaluate("new Date(Date.now() + 86400000).toISOString()")
+    assert cor({"situacao": "aprovada", "radar_redes_envios": [{"canal": "instagram", "situacao": "autorizado", "agendado_para": futuro, "id": 6},
+                                                               {"canal": "facebook", "situacao": "excluido", "id": 7}]}) == "pronta"
+
+
 # ------------------------------------------------------------ v0.10.0 — tela do assunto em 4 passos
 def pronto_para_o_site(db, corpo="Texto do informativo com **negrito** e tamanho suficiente.\n\n## Prazo\n- **Até 31/01**: opção"):
     a, c = preparar_aprovado(db, corpo=corpo)
@@ -5039,6 +5061,7 @@ def test_arquivar_oculta_e_ver_arquivados_restaura_nas_listas_v133(pagina, limpo
     linha_c().wait_for()
     linha_c().get_by_text("Arquivar", exact=True).click()
     pagina.wait_for_selector("#tab-canais tr:has-text('Informativo de teste')", state="detached")
+    pagina.evaluate("E.filtros.publicacoes = 'agendadas'")   # v0.135.0: mesmo com um filtro Enviadas/Agendadas ativo, os arquivados aparecem (o modo arquivados força "Todas")
     pagina.click("button:has-text('Ver arquivados')")
     linha_c().wait_for()
     assert linha_c().get_by_text("Desarquivar", exact=True).count() == 1

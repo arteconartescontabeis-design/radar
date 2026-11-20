@@ -493,24 +493,27 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.134.0"></script>
-<script src="radar-video.js?v=0.134.0"></script>
-<script src="radar-setor.js?v=0.134.0"></script>
-<script src="radar-respostas.js?v=0.134.0"></script>
+<script src="radar-pauta.js?v=0.135.0"></script>
+<script src="radar-video.js?v=0.135.0"></script>
+<script src="radar-setor.js?v=0.135.0"></script>
+<script src="radar-respostas.js?v=0.135.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.134.0";
+const VERSAO = "0.135.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.135.0", "20/11/2026", [
+    "<b>Acertos finos (varredura das últimas melhorias)</b>: (1) em <b>Publicações → “Ver arquivados”</b>, as notícias arquivadas sempre aparecem, mesmo que antes você tivesse escolhido “Enviadas” ou “Agendadas” (o modo arquivados mostra tudo). (2) Na <b>Pauta</b>, a peça que foi <b>tirada da rede</b> (“Excluída da rede”) fica <b>vermelha</b> (atenção), não mais azul “pronto para publicar”. (3) No <b>Informativo</b>, o link “ler on-line” <b>não aparece</b> se a notícia foi depois <b>retirada do site</b> (evita imprimir link para página que saiu do ar).",
+    "Administrador: a mudança é só na TELA (index.html, informativo.html e os .js juntos). Nada muda no banco, nas funções Edge nem no robô — e o sql/radar-hashtags-v0.134.0.sql ficou mais seguro de rodar de novo (não sobrescreve as hashtags que você já tiver personalizado por canal). Publique tudo junto e aperte Ctrl+F5."]],
   ["0.134.0", "20/11/2026", [
     "<b>Hashtags fixas por canal</b>: o conjunto de hashtags que entra no fim das legendas agora é <b>separado por canal</b> — mais no <b>Instagram</b>, poucas no <b>Facebook</b> — e vem com uma lista pesquisada para contabilidade em Santa Catarina (ex.: #contabilidade, #simplesnacional, #reformatributaria, #palhoca, #saojose, #contabilidadesc). A <b>IA continua sugerindo as hashtags do tema</b> de cada notícia por cima dessas fixas. Para o <b>site/blog</b>, o Radar guarda palavras-chave (sem #: “Simples Nacional”, “MEI”, “Reforma Tributária”…) para usar como tags/SEO. Tudo é <b>editável</b> em Configurações → Pauta e agenda automática → campo “hashtags”. Dica: 8 a 15 hashtags bem escolhidas rendem mais que 30, e repetir sempre o mesmo bloco gigante parece automação.",
-    "Administrador: esta versão ajusta um DADO de configuração (não mexe em tabela nem função). Rode no Supabase (SQL Editor) o <b>sql/radar-hashtags-v0.134.0.sql</b> (pode rodar de novo; só troca o campo “hashtags” da Pauta pelo formato por canal, mantendo o resto) e publique o index.html com os demais .js. Nenhuma função Edge muda. Aperte Ctrl+F5."]],
+    "Administrador: esta versão ajusta um DADO de configuração (não mexe em tabela nem função). Rode no Supabase (SQL Editor) o <b>sql/radar-hashtags-v0.134.0.sql</b> (pode rodar de novo sem perder ajustes: só troca o campo “hashtags” da Pauta pelo formato por canal quando ainda é o formato antigo; se você já tiver personalizado por canal, não sobrescreve) e publique o index.html com os demais .js. Nenhuma função Edge muda. Aperte Ctrl+F5."]],
   ["0.133.0", "20/11/2026", [
     "<b>Arquivar (ocultar da lista, sem apagar)</b>: em <b>Capturas</b>, <b>Legislação</b>, <b>Assuntos</b> e nas <b>notícias</b> de Publicações, cada item ganhou o botão <b>Arquivar</b> (só o administrador). Arquivar <b>tira o item da lista</b> sem apagar nada — some das contagens e da triagem. Cada lista tem o botão <b>“Ver arquivados”</b>, que mostra só os arquivados; ali, <b>“Desarquivar”</b> traz o item de volta com <b>um clique</b>. Serve para limpar o que não interessa sem perder o histórico (diferente de “Ignorar”, que é da triagem, e de “Apagar/Excluir”, que não volta).",
     "Administrador: esta versão mexe no <b>BANCO</b> (acrescenta a coluna <code>arquivado_em</code> em radar_capturas, radar_normas, radar_assuntos e radar_conteudos, cria a função <code>radar_arquivar</code> e refaz as views radar_v_fila, radar_v_em_alta e radar_v_assuntos). Rode no Supabase (SQL Editor) o <b>sql/radar-arquivar-v0.133.0.sql</b> (pode rodar de novo; nenhuma tabela é apagada) e publique o index.html com os demais .js. Nenhuma função Edge muda. Aperte Ctrl+F5."]],
@@ -2141,7 +2144,7 @@ const TELAS = {
       : (p.radar_redes_envios || []).some(e => ["autorizado", "enviando"].includes(e.situacao)) ? "agendadas" : "outras";
     const linhas = [...lista.map(c => ({t:tsConteudo(c), cat:catConteudo(c), html:linhaConteudo(c)})), ...pecasEnvio.map(p => ({t:tsPeca(p), cat:catPeca(p), html:linhaPeca(p)}))]
       .sort((a, b) => String(b.t).localeCompare(String(a.t)));
-    const fpub = E.filtros.publicacoes || "todas", visiveis = fpub === "todas" ? linhas : linhas.filter(x => x.cat === fpub);
+    const fpub = arqN ? "todas" : (E.filtros.publicacoes || "todas"), visiveis = fpub === "todas" ? linhas : linhas.filter(x => x.cat === fpub);   // v0.135.0: nos arquivados os chips somem, então vale sempre "Todas" (senão itens sem envio ficariam escondidos sem controle)
     const nEnviadas = linhas.filter(x => x.cat === "enviadas").length, nAgendadas = linhas.filter(x => x.cat === "agendadas").length;
     const chipPub = (id, nome, n) => `<button class="chip ${fpub === id ? "ativa" : ""}" type="button" data-acao="filtro-publicacoes" data-valor="${id}" aria-pressed="${fpub === id}">${nome}<b>${n}</b></button>`;
     return `<h1>Publicações no site</h1>

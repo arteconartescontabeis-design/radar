@@ -4,8 +4,9 @@
 -- formato por canal, já com um conjunto pesquisado para contabilidade em Santa Catarina. As demais chaves de "pauta"
 -- (agenda_ligada, hora_padrao, janela_horas, fatos_fixos, cronograma_inicio…) ficam como estão.
 --
--- Não mexe em NENHUMA tabela nem função (só no dado da configuração). Pode rodar de novo. A IA continua sugerindo as hashtags do
--- TEMA de cada notícia por cima dessas fixas. Para ajustar depois: Configurações → Pauta e agenda automática → campo "hashtags".
+-- Não mexe em NENHUMA tabela nem função (só no dado da configuração). Pode rodar de novo SEM perder ajustes: só troca quando "hashtags"
+-- ainda é o formato antigo (uma lista) ou não existe; se você já tiver o formato por canal (um objeto), o script NÃO sobrescreve.
+-- A IA continua sugerindo as hashtags do TEMA de cada notícia por cima dessas fixas. Ajustar depois: Configurações → Pauta → "hashtags".
 --
 -- Observação: no Instagram cabem mais (até 30); no Facebook, poucas (use 2 a 3 por post); "site" são palavras-chave do blog (sem #).
 -- 8 a 15 hashtags bem escolhidas rendem mais que 30, e repetir sempre o mesmo bloco gigante parece automação — por isso o conjunto
@@ -22,7 +23,8 @@ update public.radar_config
            '#contabilidade', '#contador', '#simplesnacional', '#santacatarina', '#palhoca'),
          'site', jsonb_build_array(
            'Simples Nacional', 'MEI', 'Reforma Tributária', 'CBS e IBS', 'eSocial', 'Abertura de empresa')))
- where chave = 'pauta';
+ where chave = 'pauta'
+   and jsonb_typeof(valor->'hashtags') is distinct from 'object';   -- só o formato antigo (lista) ou ausente; não mexe num objeto por canal já ajustado
 
 -- Se, por algum motivo, a configuração "pauta" ainda não existir, cria com o mínimo + as hashtags.
 insert into public.radar_config (chave, valor)
