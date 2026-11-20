@@ -541,7 +541,9 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- v0.63.0: o acervo de fotos da Artecon (as duas conferem o papel, por dentro)
                                                            'radar_foto_acervo_gravar', 'radar_foto_acervo_apagar',
                                                            -- v0.72.0: a foto da notícia (as duas conferem o papel, por dentro)
-                                                           'radar_assunto_foto', 'radar_assunto_foto_gravar')
+                                                           'radar_assunto_foto', 'radar_assunto_foto_gravar',
+                                                           -- v0.133.0: arquivar/desarquivar captura, legislação, assunto e notícia (confere o administrador, por dentro)
+                                                           'radar_arquivar')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -3904,6 +3906,27 @@ def test_pauta_apagar_so_admin_e_barra_a_ja_publicada(pauta):
             c.execute("select radar_pauta_apagar(%s)", (outra,))
     assert "RADAR362" in str(e.value)
     assert db.execute("select count(*) from radar_pauta_pecas where id=%s", (outra,)).fetchone()[0] == 1
+
+
+def test_arquivar_so_o_admin_oculta_e_desarquiva(db):
+    """v0.133.0: radar_arquivar(tabela, id, arquivar) é só do administrador; marca e limpa arquivado_em nas quatro listas
+    (captura, legislação, assunto e notícia). O editor não arquiva; a tabela precisa ser uma das quatro (lista branca)."""
+    cap = db.execute("insert into radar_capturas (fonte_id, url, titulo, hash_titulo) "
+                     "select id, 'https://x.gov/arq133', 'Captura arquivável', md5('arq133') from radar_fontes limit 1 returning id").fetchone()[0]
+    with como("authenticated", EDITOR) as c:                   # editor não arquiva
+        with pytest.raises(Exception) as e:
+            c.execute("select radar_arquivar('radar_capturas', %s, true)", (cap,))
+    assert "RADAR385" in str(e.value)
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_arquivar('radar_capturas', %s, true)", (cap,))
+    assert db.execute("select arquivado_em is not null from radar_capturas where id=%s", (cap,)).fetchone()[0] is True
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_arquivar('radar_capturas', %s, false)", (cap,))
+    assert db.execute("select arquivado_em from radar_capturas where id=%s", (cap,)).fetchone()[0] is None
+    with como("authenticated", ADMIN) as c:                    # tabela fora da lista branca
+        with pytest.raises(Exception) as e2:
+            c.execute("select radar_arquivar('radar_perfis', 1, true)")
+    assert "RADAR385" in str(e2.value)
 
 
 def test_metricas_so_o_coletor_grava_e_o_resumo_traz_os_melhores_horarios(db):

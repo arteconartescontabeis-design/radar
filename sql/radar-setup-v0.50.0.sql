@@ -3840,6 +3840,27 @@ end $$;
 revoke all on function public.radar_pauta_apagar(bigint) from public, anon, authenticated, service_role;
 grant execute on function public.radar_pauta_apagar(bigint) to authenticated;
 
+-- v0.133.0: arquivar (ocultar da lista, reversível, só o administrador) a captura, a legislação, o assunto e a notícia.
+-- A coluna arquivado_em (nulo = ativo) e a função radar_arquivar(tabela, id, arquivar). Nada é apagado.
+alter table public.radar_capturas  add column if not exists arquivado_em timestamptz;
+alter table public.radar_normas     add column if not exists arquivado_em timestamptz;
+alter table public.radar_assuntos   add column if not exists arquivado_em timestamptz;
+alter table public.radar_conteudos  add column if not exists arquivado_em timestamptz;
+create or replace function public.radar_arquivar(p_tabela text, p_id bigint, p_arquivar boolean default true)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR385: só o administrador arquiva ou desarquiva' using errcode = '42501';
+  end if;
+  if p_tabela not in ('radar_capturas', 'radar_normas', 'radar_assuntos', 'radar_conteudos') then
+    raise exception 'RADAR385: essa lista não pode ser arquivada' using errcode = '22023';
+  end if;
+  execute format('update public.%I set arquivado_em = $1 where id = $2', p_tabela)
+    using (case when p_arquivar then now() end), p_id;
+end $$;
+revoke all on function public.radar_arquivar(text, bigint, boolean) from public, anon, authenticated, service_role;
+grant execute on function public.radar_arquivar(text, bigint, boolean) to authenticated;
+
 -- O que falta resolver na peça (a tela mostra a lista). p_canais nulo: os canais que têm legenda.
 create or replace function public.radar_pauta_conferir(p_peca bigint, p_canais text[]) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
@@ -7440,6 +7461,7 @@ grant execute on function public.radar_pauta_importar(jsonb) to authenticated;
 grant execute on function public.radar_pauta_criar(jsonb) to authenticated;          -- v0.28.0 (a função confere que é o administrador)
 grant execute on function public.radar_pauta_mudar_data(bigint, date, time) to authenticated;   -- v0.64.0 (a função confere que é o administrador)
 grant execute on function public.radar_pauta_apagar(bigint) to authenticated;        -- v0.122.0 (a função confere que é o administrador)
+grant execute on function public.radar_arquivar(text, bigint, boolean) to authenticated;   -- v0.133.0 (a função confere que é o administrador)
 grant execute on function public.radar_pauta_conferir(bigint, text[]) to authenticated;
 grant execute on function public.radar_pauta_marcar_pronta(bigint, timestamptz, jsonb) to authenticated;   -- v0.120.0: + a liberação do administrador
 grant execute on function public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text, jsonb) to authenticated;   -- v0.22.0: + o vídeo; v0.120.0: + a liberação

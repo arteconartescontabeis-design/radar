@@ -201,6 +201,7 @@ drop function if exists public.radar_ignorar_capturas(bigint[]);
 drop function if exists public.radar_gravar_avaliacao_ia(jsonb);
 drop function if exists public.radar_limpar_imagens_sem_uso(int);
 drop function if exists public.radar_arquivar_fila(int);
+drop function if exists public.radar_arquivar(text, bigint, boolean);
 drop function if exists public.radar_separar_captura(bigint, bigint);
 drop function if exists public.radar_separar_repeticao(bigint);
 drop function if exists public.radar_autorizar_copia(bigint, text, timestamptz);
