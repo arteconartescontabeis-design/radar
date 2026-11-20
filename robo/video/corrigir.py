@@ -42,6 +42,7 @@ import hashlib
 import json
 import os
 import re
+import urllib.request
 
 import segredo
 from conversa import Conversa
@@ -51,6 +52,29 @@ FONTES = Path(__file__).resolve().parent / "fontes"
 PRESET = "medium"                      # x264 (os testes trocam por um mais rápido)
 JSON_MAX = 2 * 1024 * 1024             # o palavras.json guardado (transcrever.JSON_MAX)
 _ARQUIVO = re.compile(r"/[A-Za-z0-9_./-]+")             # fullmatch (o "$" aceitaria a quebra de linha no fim)
+
+# v0.133.0: reporta os segundos de transcrição da Azure à IA Central (Portal → Consumo de IA → Azure — voz e transcrição),
+# somados aos da Agenda na mesma cota. Best-effort: sem o token não faz nada; falha vira só uma linha de log.
+IA_FALA_REGISTRAR_URL = "https://fbxelwhdiisfmnwrerbl.supabase.co/rest/v1/rpc/ia_fala_registrar"
+IA_FALA_APIKEY = "sb_publishable_iRqjOGU1ialauv_wHYarbw_cRzspHH6"   # chave publicável (pública), a mesma que o Portal usa
+
+
+def avisar_transcricao(segundos: float, ref: str, detalhe: str = "transcrição de reel (Radar)") -> None:
+    """Avisa a IA Central dos segundos de transcrição da Azure. p_ref é único por reel (dedup por app+ref: o mesmo reel
+    reenviado não conta de novo). Sem IA_FALA_TOKEN ou com segundos <= 0, não faz nada; qualquer falha é só log."""
+    token = os.environ.get("IA_FALA_TOKEN", "")
+    seg = int(round(segundos or 0))
+    if not token or seg <= 0:
+        return
+    corpo = json.dumps({"p_token": token, "p_segundos": max(0, min(3600, seg)), "p_ref": ref,
+                        "p_usuario": "radar-video", "p_detalhe": detalhe}).encode("utf-8")
+    req = urllib.request.Request(IA_FALA_REGISTRAR_URL, data=corpo, method="POST", headers={
+        "Content-Type": "application/json", "apikey": IA_FALA_APIKEY, "Authorization": "Bearer " + IA_FALA_APIKEY})
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=10) as resp:
+            resp.read()
+    except Exception:
+        segredo.log("alinhar", ia_central="transcricao_nao_registrada")
 
 
 class Trabalho:
@@ -258,6 +282,8 @@ def alinhar(trab: Trabalho) -> int:
                 parar = e if e.codigo in ("pedido_perdido", "robo_chave") else None
             if parar:
                 raise parar
+            # v0.133.0: também na cota compartilhada da IA Central (Azure — voz e transcrição), junto com a Agenda
+            avisar_transcricao(r["transcricao"]["segundos_audio"] or 0, f"radar-video:{vid}")
         cfg, ajustes = pedido["config"], pedido["ajustes"]
         al = alinhamento.alinhar(pedido["fala_roteiro"], r["palavras"], r["frases"], cfg, ajustes)
         # v0.40.0: o juiz de sentido (IA Central, se o token estiver configurado) — paráfrase de termo deixa de pedir

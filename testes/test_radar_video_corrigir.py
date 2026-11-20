@@ -919,7 +919,8 @@ def test_workflow_do_repositorio_privado():
             assert run.startswith("python3 -I ") and env == {**chave_robo,
                                                              "RADAR_IA_GATEWAY_TOKEN": "${{ secrets.RADAR_IA_GATEWAY_TOKEN }}",
                                                              "IA_GATEWAY_URL": "${{ vars.IA_GATEWAY_URL }}",
-                                                             "RADAR_VIDEO_IA_MODELO": "${{ vars.RADAR_VIDEO_IA_MODELO }}"}
+                                                             "RADAR_VIDEO_IA_MODELO": "${{ vars.RADAR_VIDEO_IA_MODELO }}",
+                                                             "IA_FALA_TOKEN": "${{ secrets.IA_FALA_TOKEN }}"}   # v0.133.0: cota compartilhada da Azure na IA Central
         elif fase == "transcrever":
             assert env == {k: "${{ secrets.%s }}" % k for k in ("AZURE_FALA_CHAVE", "AZURE_FALA_REGIAO", "AZURE_FALA_MODO", "AZURE_FALA_ENDPOINT")}
         else:
@@ -939,7 +940,7 @@ def test_workflow_do_repositorio_privado():
                      "write", "ACTIONS_STEP_DEBUG", "::add-mask::", "cancel-in-progress"):
         assert proibido not in codigo, proibido
     assert all("${{" not in p.get("run", "") for p in passos), "expressão dentro de um run"
-    assert codigo.count("secrets.") == 8                 # 3 da chave do robô, 4 da Azure e 1 do juiz (v0.40.0), só nos env
+    assert codigo.count("secrets.") == 9                 # 3 da chave do robô, 4 da Azure, 1 do juiz (v0.40.0) e 1 do IA_FALA_TOKEN (v0.133.0), só nos env
     assert job["env"]["RADAR_VIDEO_ISOLADO"] == "docker" and all("RADAR_VIDEO_ISOLADO" not in (p.get("env") or {}) for p in passos)
 
 
@@ -1008,3 +1009,37 @@ def test_robo_contra_a_funcao_radar_video_de_verdade(vid, tmp_path):
     assert f"radar-video: concluir {v} → pronto (robo)" in registros
     for proibido in ("token=", "assinado.", "envio.", "http", CHAVE_ROBO, "Ana", FALA_BANCO[:20], "eyJ"):
         assert proibido not in registros, proibido
+
+
+def test_avisar_transcricao_reporta_os_segundos_a_ia_central(monkeypatch):
+    """v0.133.0: o robô reporta os segundos da transcrição da Azure à IA Central (ia_fala_registrar), com p_ref único por
+    reel (dedup). Sem IA_FALA_TOKEN, ou com segundos <= 0, não chama; a falha é só log e a correção segue."""
+    chamadas = []
+
+    class _Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b""
+
+    class _Opener:
+        def open(self, req, timeout=None):
+            chamadas.append({"url": req.full_url, "headers": dict(req.header_items()), "corpo": json.loads(req.data)})
+            return _Resp()
+
+    monkeypatch.setattr(corrigir.urllib.request, "build_opener", lambda *a, **k: _Opener())
+    # sem token: não chama
+    monkeypatch.delenv("IA_FALA_TOKEN", raising=False)
+    corrigir.avisar_transcricao(120, "radar-video:7")
+    assert chamadas == []
+    # com token e segundos > 0: chama uma vez, com o corpo e os cabeçalhos certos (segundos arredondados)
+    monkeypatch.setenv("IA_FALA_TOKEN", "tok-radar")
+    corrigir.avisar_transcricao(119.6, "radar-video:7")
+    assert len(chamadas) == 1
+    c = chamadas[0]
+    assert c["url"] == corrigir.IA_FALA_REGISTRAR_URL
+    assert c["corpo"] == {"p_token": "tok-radar", "p_segundos": 120, "p_ref": "radar-video:7",
+                          "p_usuario": "radar-video", "p_detalhe": "transcrição de reel (Radar)"}
+    assert c["headers"].get("Apikey") == corrigir.IA_FALA_APIKEY and c["headers"].get("Authorization") == "Bearer " + corrigir.IA_FALA_APIKEY
+    # segundos <= 0: não chama de novo
+    corrigir.avisar_transcricao(0, "radar-video:8")
+    assert len(chamadas) == 1

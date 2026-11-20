@@ -118,6 +118,7 @@ jobs:
           RADAR_IA_GATEWAY_TOKEN: ${{ secrets.RADAR_IA_GATEWAY_TOKEN }}        # v0.40.0: o juiz de sentido (opcional)
           IA_GATEWAY_URL: ${{ vars.IA_GATEWAY_URL }}
           RADAR_VIDEO_IA_MODELO: ${{ vars.RADAR_VIDEO_IA_MODELO }}
+          IA_FALA_TOKEN: ${{ secrets.IA_FALA_TOKEN }}                          # v0.133.0: reportar os segundos da Azure à IA Central (cota compartilhada com a Agenda; opcional)
         run: python3 -I robo/video/corrigir.py alinhar "$RUNNER_TEMP/corretor"
 
       - name: Montar e conferir o vídeo (sem segredo)
