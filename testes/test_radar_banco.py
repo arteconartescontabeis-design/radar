@@ -4062,7 +4062,13 @@ def importar(linhas, uid=EDITOR):
 
 def test_pauta_configuracao_inicial_e_honorario_fora_da_agenda_das_redes(limpo):
     conf = dict(limpo.execute("select chave, valor from radar_config").fetchall())
-    assert conf["pauta"] == {"agenda_ligada": True, "hora_padrao": "09:30", "janela_horas": 6, "hashtags": ["#Contabilidade", "#Palhoça"]}
+    # v0.134.0 (#8): hashtags por canal (conjunto fixo editável; a IA soma as do tema). Instagram aceita mais; Facebook, poucas; site são palavras-chave.
+    assert conf["pauta"]["agenda_ligada"] is True and conf["pauta"]["hora_padrao"] == "09:30" and conf["pauta"]["janela_horas"] == 6
+    tags = conf["pauta"]["hashtags"]
+    assert set(tags.keys()) == {"instagram", "facebook", "site"}
+    assert tags["instagram"][:2] == ["#contabilidade", "#contador"] and "#palhoca" in tags["instagram"] and len(tags["instagram"]) == 20
+    assert tags["facebook"] == ["#contabilidade", "#contador", "#simplesnacional", "#santacatarina", "#palhoca"]
+    assert tags["site"][0] == "Simples Nacional" and all("#" not in x for x in tags["site"])
     obrig = conf["obrigacoes"]
     assert [o["nome"] for o in obrig if o.get("redes") is False] == ["Honorário contábil"]
     # na instalação que já existe, o item ganha "redes": false sem mexer no resto; se o administrador já decidiu, fica como está

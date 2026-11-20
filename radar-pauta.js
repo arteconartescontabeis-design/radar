@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.133.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.134.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -73,7 +73,14 @@ async function lerConfPauta(){
   const ident = CONF_PAUTA.assinatura;
   E.identificacao = ident && typeof ident === "object" && !Array.isArray(ident) ? ident : null;
 }
-const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PAUTA.pauta.hashtags : []).map(textoDe).filter(x => /^#[\p{L}\p{N}_]+$/u.test(x)).slice(0, 3);
+// v0.134.0 (#8): conjunto fixo de hashtags por canal. Aceita o formato antigo (uma lista, vale para Instagram e Facebook) e o novo
+// (objeto {instagram, facebook, site}; "site" são palavras-chave do blog, não entram nas legendas). Instagram aceita mais; Facebook, menos.
+const HASHTAGS_LIMITE = {instagram: 30, facebook: 10};
+const hashtagsPauta = (canal = "instagram") => {
+  const hs = CONF_PAUTA.pauta?.hashtags;
+  const lista = Array.isArray(hs) ? hs : (hs && typeof hs === "object" ? hs[canal] : null);
+  return (Array.isArray(lista) ? lista : []).map(textoDe).filter(x => /^#[\p{L}\p{N}_]+$/u.test(x)).slice(0, HASHTAGS_LIMITE[canal] || 10);
+};
 // o banco ainda é o da v0.20.0 (a tabela da Pauta não existe): a tela diz o que falta em vez do erro cru do PostgREST
 // (v0.22.0: as colunas novas de radar_pessoas também dizem que o banco é de antes)
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
@@ -1650,7 +1657,7 @@ const PAUTA = {
       if(!t.value.trim()){ recado("Escreva a legenda antes: a identificação legal e as hashtags vão no fim dela.", true); return; }
       if(faltaIdentificacao().length){ recado(`A identificação legal está incompleta: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura (o administrador preenche).`, true); return; }
       if(t.value.includes(ident)){ recado("A identificação legal já está nesta legenda."); return; }
-      t.value = comporLegenda(t.value, hashtagsPauta().filter(x => !t.value.includes(x)).join(" "), 2200);
+      t.value = comporLegenda(t.value, hashtagsPauta(el.dataset.canal).filter(x => !t.value.includes(x)).join(" "), 2200);
       contarPeca(t); recado("Identificação legal e hashtags no fim da legenda. Confira e salve.");
     },
     async "peca-foto-mover"(el){
@@ -1860,7 +1867,7 @@ const PAUTA = {
       if(comCartoes) box.innerHTML = cartoes.slice(0, 9).map(c => linhaCartao({titulo:nome(textoDe(c.titulo)), texto:nome(textoDe(c.texto))}, "")).join("");
       const fontes = [...new Set([...f.querySelectorAll("#peca-conferidas [name=conf-fonte]")].map(c => c.value.trim()).filter(Boolean))], avisos = [];
       for(const k of legendas){
-        const tags = [...hashtagsPauta(), ...(Array.isArray(s[k].hashtags) ? s[k].hashtags : []).map(textoDe).filter(x => /^#[\p{L}\p{N}_]+$/u.test(x))]
+        const tags = [...hashtagsPauta(k), ...(Array.isArray(s[k].hashtags) ? s[k].hashtags : []).map(textoDe).filter(x => /^#[\p{L}\p{N}_]+$/u.test(x))]
           .filter((x, i, todas) => todas.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i);
         const c = f.elements["legenda_" + k], r = legendaDaSugestao(nome(textoDe(s[k].texto)), fontes, tags.join(" "));
         c.value = r.legenda;
