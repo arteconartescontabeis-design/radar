@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.135.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.136.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -144,6 +144,7 @@ function situacaoCartao(p){
   if(agendados.some(e => new Date(e.agendado_para).getTime() < Date.now() - 20 * 60000)) return "atrasada";
   if(agendados.length) return "pronta";    // agendada futura: azul, como o selo "Agendada"
   if(atuais.some(e => e.situacao === "excluido")) return "atrasada";    // v0.135.0: saiu e foi tirada da rede — atenção (como o selo "Excluída da rede"), nunca azul "pronta"
+  if(p.situacao !== "cancelada" && p.data && p.data < hojeBrasilia()) return "atrasada";   // v0.136.0: peça de dia que já passou, não publicada e não cancelada — ficou para trás
   if(["pronta", "aprovada", "em_producao"].includes(p.situacao)) return "pronta";
   return "planejada";    // planejada e cancelada ficam no cinza (o selo já diz "Cancelada")
 }

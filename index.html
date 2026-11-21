@@ -493,21 +493,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.135.0"></script>
-<script src="radar-video.js?v=0.135.0"></script>
-<script src="radar-setor.js?v=0.135.0"></script>
-<script src="radar-respostas.js?v=0.135.0"></script>
+<script src="radar-pauta.js?v=0.136.0"></script>
+<script src="radar-video.js?v=0.136.0"></script>
+<script src="radar-setor.js?v=0.136.0"></script>
+<script src="radar-respostas.js?v=0.136.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.135.0";
+const VERSAO = "0.136.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.136.0", "21/11/2026", [
+    "<b>Peça atrasada fica vermelha na Pauta</b>: uma peça de um <b>dia que já passou</b>, que <b>não foi publicada</b> e <b>não está cancelada</b>, agora conta como <b>Atrasada</b> (cartão vermelho e na contagem da legenda). Antes ela ficava em <b>“Sem mexer”</b> (cinza), mesmo com a data vencida — por isso “Atrasada” às vezes aparecia <b>zero</b> tendo peças para trás. Vale para as <b>Planejada</b>, <b>Pronto p/ publicar</b> e <b>Em produção</b> de dias passados. As <b>Canceladas</b> seguem cinza e as <b>Publicadas</b>, verdes; as <b>agendadas para o futuro</b> continuam azuis.",
+    "Administrador: a mudança é só na TELA (index.html + os .js juntos). Nada muda no banco, nas funções Edge nem no robô. Publique tudo junto e aperte Ctrl+F5."]],
   ["0.135.0", "20/11/2026", [
     "<b>Acertos finos (varredura das últimas melhorias)</b>: (1) em <b>Publicações → “Ver arquivados”</b>, as notícias arquivadas sempre aparecem, mesmo que antes você tivesse escolhido “Enviadas” ou “Agendadas” (o modo arquivados mostra tudo). (2) Na <b>Pauta</b>, a peça que foi <b>tirada da rede</b> (“Excluída da rede”) fica <b>vermelha</b> (atenção), não mais azul “pronto para publicar”. (3) No <b>Informativo</b>, o link “ler on-line” <b>não aparece</b> se a notícia foi depois <b>retirada do site</b> (evita imprimir link para página que saiu do ar).",
     "Administrador: a mudança é só na TELA (index.html, informativo.html e os .js juntos). Nada muda no banco, nas funções Edge nem no robô — e o sql/radar-hashtags-v0.134.0.sql ficou mais seguro de rodar de novo (não sobrescreve as hashtags que você já tiver personalizado por canal). Publique tudo junto e aperte Ctrl+F5."]],
