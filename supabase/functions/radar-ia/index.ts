@@ -155,7 +155,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.67.0";   // v0.67.0: ação "pauta_ideias" (sugere data+assunto de novas pautas); v0.66.0: Análise Artecon seção fixa no final (regra 4)
+const VERSAO = "0.68.0";   // v0.68.0: fonte não oficial não é nomeada no texto (atribui ao órgão oficial ou de forma neutra); v0.67.0: ação "pauta_ideias" (sugere data+assunto de novas pautas); v0.66.0: Análise Artecon seção fixa no final (regra 4)
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -838,8 +838,10 @@ const FORMATOS: Record<string, string> = {
 // por este caminho: o banco continua exigindo texto oficial conferido para registrar ou autorizar a publicação.
 // v0.19.0: só quando o pedido traz "analise": true (compatibilidade); sem isso, o caminho é o Informativo (v0.24.0: REGRA_INFORMATIVO)
 const REGRA_ANALISE = "ATENÇÃO: o material fornecido é de fonte NÃO OFICIAL (boletim, editora ou portal), muitas vezes só um resumo. " +
-  "Escreva um texto PARA ANÁLISE INTERNA do escritório: explique o que a fonte informa, dizendo de onde veio a informação " +
-  "('segundo o Portal Contábil SC', 'de acordo com o boletim da ITC'). O que a fonte informa fica no texto, atribuído a ela, e também vai " +
+  "Escreva um texto PARA ANÁLISE INTERNA do escritório: explique o que a fonte informa, atribuindo ao ÓRGÃO OFICIAL que o material " +
+  "noticia (Senado, Receita Federal etc.) quando ele é identificável, ou, para o que só o material traz, de forma NEUTRA ('segundo o " +
+  "noticiário especializado', 'conforme apuração da imprensa'); NUNCA cite pelo nome o portal, boletim ou editora de onde veio o " +
+  "material (nem gratuito nem pago) — nada de 'segundo o Portal …' nem 'de acordo com o boletim …'. O que a fonte informa fica no texto, atribuído assim, e também vai " +
   "para 'pendencias' quando for número, data, prazo, alíquota ou norma a conferir na fonte oficial (menos o que a VERIFICAÇÃO EM FONTES " +
   "OFICIAIS, se houver, já confirmou); a regra (3) vale para o que o material não informa. " +
   "NÃO escreva no texto avisos sobre a origem da informação (como 'este informativo é baseado em material de fonte não oficial'): " +
@@ -854,10 +856,12 @@ const REGRA_INFORMATIVO = "ATENÇÃO: não há texto oficial; o material forneci
   "O texto é SEM BASE LEGAL (o modo Informativo da Diretriz 2; o formato pedido continua valendo para o tamanho e a organização): " +
   "escreva para o leitor, com palavras próprias, direto e resumido, os fatos e as consequências práticas, sem apresentar " +
   "nada como obrigação, direito, proibição, benefício ou exigência legal e sem fundamentação jurídica artificial (sem a linha " +
-  "'Fonte oficial'); separe o fato confirmado da estimativa, projeção, tendência ou opinião, dizendo de quem é; diga uma vez, no " +
-  "texto, de que fonte veio a informação, pelo nome como aparece em 'órgão:' ou 'publicação:' no material (o endereço dela sai no fim " +
-  "da notícia, pelo sistema); a informação do BOLETIM PAGO vai só com palavras e estrutura próprias, atribuída a ele pelo nome, nunca " +
-  "com as frases dele. " +
+  "'Fonte oficial'); separe o fato confirmado da estimativa, projeção, tendência ou opinião, dizendo de quem é; atribua a informação ao " +
+  "ÓRGÃO OFICIAL que o material noticia (o nome em 'órgão:', como 'Senado Federal' ou 'Receita Federal') e, para o que só o material traz " +
+  "sem um órgão oficial identificável, use atribuição NEUTRA ('segundo o noticiário especializado', 'conforme apuração da imprensa'); " +
+  "NUNCA cite pelo nome o portal, boletim ou editora de onde veio o material (o que aparece em 'publicação:'), nem gratuito nem pago — " +
+  "nada de 'segundo o Portal …' nem 'de acordo com o boletim …' (o endereço da fonte sai no fim da notícia, pelo sistema). A informação " +
+  "do BOLETIM PAGO vai só com palavras e estrutura próprias, sem as frases dele e sem nomeá-lo. " +
   "Número, data, prazo, alíquota ou norma que só o material informa pode ficar no texto e vai também para 'pendencias' (menos o que a " +
   "VERIFICAÇÃO EM FONTES OFICIAIS, se houver, já confirmou); a regra (3) vale para o que o material não informa. " +
   "NÃO escreva no texto avisos sobre a origem da informação (como 'este informativo é baseado em material de fonte não oficial'): " +
