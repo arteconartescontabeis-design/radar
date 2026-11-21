@@ -911,7 +911,10 @@ def test_workflow_do_repositorio_privado():
         fase = m.group(2) if m.group(1) == "corrigir" else "transcrever"
         fases.append(fase)
         assert re.search(r'(^|\s)(python3|"\$RUNNER_TEMP/v/bin/python") -I robo/video/', run), run
-        if fase in ("pegar", "entregar"):
+        if fase == "pegar":
+            # a chave do robô + v0.133.0: o token da IA Central (opcional), para ler a cota compartilhada e barrar antes de estourar
+            assert run.startswith("python3 -I ") and env == {**chave_robo, "IA_FALA_TOKEN": "${{ secrets.IA_FALA_TOKEN }}"}, fase
+        elif fase == "entregar":
             # a chave do robô: python3 do sistema (só a biblioteca padrão; nada do Pillow nem do SDK no processo com ela)
             assert run.startswith("python3 -I ") and {k: v for k, v in env.items() if k != "RADAR_VIDEO_JOB"} == chave_robo, fase
         elif fase == "alinhar":
@@ -940,7 +943,7 @@ def test_workflow_do_repositorio_privado():
                      "write", "ACTIONS_STEP_DEBUG", "::add-mask::", "cancel-in-progress"):
         assert proibido not in codigo, proibido
     assert all("${{" not in p.get("run", "") for p in passos), "expressão dentro de um run"
-    assert codigo.count("secrets.") == 9                 # 3 da chave do robô, 4 da Azure, 1 do juiz (v0.40.0) e 1 do IA_FALA_TOKEN (v0.133.0), só nos env
+    assert codigo.count("secrets.") == 10                # 3 da chave do robô, 4 da Azure, 1 do juiz (v0.40.0) e 2 do IA_FALA_TOKEN (v0.133.0: pegar + alinhar), só nos env
     assert job["env"]["RADAR_VIDEO_ISOLADO"] == "docker" and all("RADAR_VIDEO_ISOLADO" not in (p.get("env") or {}) for p in passos)
 
 
@@ -1043,3 +1046,35 @@ def test_avisar_transcricao_reporta_os_segundos_a_ia_central(monkeypatch):
     # segundos <= 0: não chama de novo
     corrigir.avisar_transcricao(0, "radar-video:8")
     assert len(chamadas) == 1
+
+
+def test_consumo_transcricao_le_a_cota_compartilhada(monkeypatch):
+    """v0.133.0: lê o restante da cota compartilhada (ia_fala_consumo → restante_seg). Sem token = None; resposta ok = os segundos
+    (tolera objeto ou lista); sem o campo ou com falha de rede = None, para o robô seguir só com a cota local."""
+    resposta = [{"restante_seg": 1234, "total_seg": 566}]
+    falhar = [False]
+
+    class _Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return json.dumps(resposta[0]).encode()
+
+    class _Opener:
+        def open(self, req, timeout=None):
+            if falhar[0]:
+                raise OSError("central fora do ar")
+            assert req.full_url == corrigir.IA_FALA_CONSUMO_URL and json.loads(req.data) == {"p_token": "tok-radar"}
+            return _Resp()
+
+    monkeypatch.setattr(corrigir.urllib.request, "build_opener", lambda *a, **k: _Opener())
+    monkeypatch.delenv("IA_FALA_TOKEN", raising=False)
+    assert corrigir.consumo_transcricao() is None                 # sem token: nem chama
+    monkeypatch.setenv("IA_FALA_TOKEN", "tok-radar")
+    assert corrigir.consumo_transcricao() == 1234.0               # objeto
+    resposta[0] = [{"restante_seg": 10}]
+    assert corrigir.consumo_transcricao() == 10.0                 # tolera lista
+    resposta[0] = {"sem_campo": 1}
+    assert corrigir.consumo_transcricao() is None                 # sem restante_seg
+    resposta[0] = {"restante_seg": 1234}
+    falhar[0] = True
+    assert corrigir.consumo_transcricao() is None                 # central fora: best-effort

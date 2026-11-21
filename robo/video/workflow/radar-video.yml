@@ -81,6 +81,7 @@ jobs:
         env:
           RADAR_VIDEO_URL: ${{ vars.RADAR_VIDEO_URL }}
           RADAR_VIDEO_ROBO_CHAVE: ${{ secrets.RADAR_VIDEO_ROBO_CHAVE }}
+          IA_FALA_TOKEN: ${{ secrets.IA_FALA_TOKEN }}                          # v0.133.0: ler a cota compartilhada da IA Central para barrar antes de estourar (opcional)
         run: python3 -I robo/video/corrigir.py pegar "$RUNNER_TEMP/corretor"
 
       - name: Preparar o Python (sem segredo)

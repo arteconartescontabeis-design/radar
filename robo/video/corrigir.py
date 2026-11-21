@@ -56,6 +56,7 @@ _ARQUIVO = re.compile(r"/[A-Za-z0-9_./-]+")             # fullmatch (o "$" aceit
 # v0.133.0: reporta os segundos de transcrição da Azure à IA Central (Portal → Consumo de IA → Azure — voz e transcrição),
 # somados aos da Agenda na mesma cota. Best-effort: sem o token não faz nada; falha vira só uma linha de log.
 IA_FALA_REGISTRAR_URL = "https://fbxelwhdiisfmnwrerbl.supabase.co/rest/v1/rpc/ia_fala_registrar"
+IA_FALA_CONSUMO_URL = "https://fbxelwhdiisfmnwrerbl.supabase.co/rest/v1/rpc/ia_fala_consumo"
 IA_FALA_APIKEY = "sb_publishable_iRqjOGU1ialauv_wHYarbw_cRzspHH6"   # chave publicável (pública), a mesma que o Portal usa
 
 
@@ -75,6 +76,28 @@ def avisar_transcricao(segundos: float, ref: str, detalhe: str = "transcrição 
             resp.read()
     except Exception:
         segredo.log("alinhar", ia_central="transcricao_nao_registrada")
+
+
+def consumo_transcricao() -> float | None:
+    """Lê o que resta da cota de transcrição COMPARTILHADA na IA Central (Azure — voz, junto com a Agenda), em segundos. Best-effort:
+    sem IA_FALA_TOKEN, falha de rede ou resposta estranha, devolve None (o robô segue só com a cota local do Radar)."""
+    token = os.environ.get("IA_FALA_TOKEN", "")
+    if not token:
+        return None
+    corpo = json.dumps({"p_token": token}).encode("utf-8")
+    req = urllib.request.Request(IA_FALA_CONSUMO_URL, data=corpo, method="POST", headers={
+        "Content-Type": "application/json", "apikey": IA_FALA_APIKEY, "Authorization": "Bearer " + IA_FALA_APIKEY})
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=10) as resp:
+            dados = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+    if isinstance(dados, list):                             # tolera lista (PostgREST) ou objeto
+        dados = dados[0] if dados else None
+    v = dados.get("restante_seg") if isinstance(dados, dict) else None
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return max(0.0, float(v))
 
 
 class Trabalho:
@@ -166,6 +189,13 @@ def pegar(trab: Trabalho) -> int:
         return 0
     pedido = r["pedido"]
     segredo.etapa("pegar", pedido["id"])
+    # v0.133.0: além da cota local do Radar (restante_s, vinda do servidor), honra a cota COMPARTILHADA da IA Central (Azure — voz,
+    # junto com a Agenda): usa o menor dos dois. Best-effort: sem o token ou com a central fora do ar, segue só com a local.
+    if pedido.get("modo") == "completo":
+        central = consumo_transcricao()
+        if central is not None:
+            atual = pedido.get("restante_s")
+            pedido["restante_s"] = central if atual is None else min(float(atual), central)
     for p in (trab.ent, trab.sai, trab.fala):
         p.mkdir(parents=True, exist_ok=True)
     trab.gravar("pedido", pedido)
