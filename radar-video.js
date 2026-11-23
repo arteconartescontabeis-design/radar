@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.137.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.138.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -1289,8 +1289,10 @@ function razaoVideo(a, b){
     if(k){ m += k; if(alo < i && blo < j) fila.push([alo, i, blo, j]); if(i + k < ahi && j + k < bhi) fila.push([i + k, ahi, j + k, bhi]); } }
   return 2 * m / (a.length + b.length);
 }
-function recusaLegenda(velho, novo, n, perto){
-  if(!novo || novo.length > 120 || /[{}\\<>\u0000-\u001f\u007f]/.test(novo)) return "texto_invalido";
+function recusaLegenda(velho, novo, n, perto, admin){
+  // v0.138.0: bloco vazio = excluir a legenda do bloco; só o administrador pode (o robô aplica deixando as unidades sem texto)
+  if(!novo) return admin ? "" : "texto_invalido";
+  if(novo.length > 120 || /[{}\\<>\u0000-\u001f\u007f]/.test(novo)) return "texto_invalido";
   const vs = velho.split(" ").filter(Boolean), ns = novo.split(" ").filter(Boolean);
   if(ns.length !== n || vs.length !== ns.length) return "numero_de_palavras";
   const termos = termosDoGlossario();
@@ -1569,10 +1571,10 @@ const cartelaDoEditor = (v, r) => r.refazer ? linhasCartela(v.fala_pessoa) : nul
 const mudouAbaVideo = (v, r) => !ajustesIguais(ajustesDoEditor(v, r), v.ajustes) || ganchoDoEditor(v, r) !== null || r.refazer;
 /* as recusas da legenda (a mesma regra do robô): {bloco: motivo} */
 function recusasLegendaVideo(v, r){
-  const blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista), out = {};
+  const blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista), out = {}, adm = ehAdmin();   // v0.138.0: admin pode excluir (bloco vazio)
   for(const [i, novo] of Object.entries(r.legenda)){
     const b = blocos[Number(i)]; if(!b || novo === b.texto) continue;
-    const n = numVideo(b.palavras), motivo = Number.isInteger(n) ? recusaLegenda(b.texto, novo, n, Array.isArray(b.perto) ? b.perto : v.fala_roteiro) : "bloco_inexistente";
+    const n = numVideo(b.palavras), motivo = Number.isInteger(n) ? recusaLegenda(b.texto, novo, n, Array.isArray(b.perto) ? b.perto : v.fala_roteiro, adm) : "bloco_inexistente";
     if(motivo) out[i] = motivo;
   }
   return out;
@@ -2073,15 +2075,17 @@ function htmlCortesAbaVideo(v, r, ed){
 /* 2. Texto da legenda: um bloco por linha, cada palavra num campo */
 function htmlLegendaAbaVideo(v, r, ed){
   const blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista), recusas = recusasLegendaVideo(v, r), rec = listaVideo(objVideo(objVideo(v.relatorio).legenda).recusados);
-  const pulos = pulosDaPreviaVideo(v, r);
+  const pulos = pulosDaPreviaVideo(v, r), adm = ehAdmin();   // v0.138.0: só o administrador exclui um bloco da legenda
   if(!blocos.length) return `<p class="sub">A lista dos blocos da legenda não veio no relatório.</p>`;
-  return `<p class="sub">Troque palavra por palavra: cada palavra nova é a do roteiro ou parecida com a que estava; número, data, mês e termo do glossário não mudam aqui (se a fala está errada, corte o trecho ou grave de novo).</p>
+  return `<p class="sub">Troque palavra por palavra: cada palavra nova é a do roteiro ou parecida com a que estava; número, data, mês e termo do glossário não mudam aqui (se a fala está errada, corte o trecho ou grave de novo).${adm ? " Só o administrador pode <b>Excluir</b> um bloco: a legenda daquele trecho some do vídeo (o áudio e o resto da legenda não mudam)." : ""}</p>
     ${rec.length ? `<div class="aviso alerta" id="vaba-recusados">Na montagem anterior, foi recusado: ${rec.map(x => `bloco ${h(x.bloco)}, ${h(deMapaVideo(MOTIVOS_LEGENDA, x.motivo) || x.motivo)}`).join("; ")}.</div>` : ""}
-    ${blocos.map((b, i) => { const texto = String(r.legenda[i] ?? b.texto ?? ""), ok = Number.isInteger(numVideo(b.u)) && Number.isInteger(numVideo(b.palavras)), em = numVideo(b.em_s);
+    ${blocos.map((b, i) => { const ok = Number.isInteger(numVideo(b.u)) && Number.isInteger(numVideo(b.palavras)), em = numVideo(b.em_s);
+      const excluido = ok && r.legenda[i] === "", texto = excluido ? "" : String(r.legenda[i] ?? b.texto ?? "");
       const sai = em !== null && pulos.some(([x, y]) => em >= x - 0.01 && em < y);
-      return `<div class="vaba-bloco${sai ? " sai" : ""}" data-bloco="${i}"><span class="sub">${em !== null ? `Aos ${segVideo(em)} s` : `Bloco ${i + 1}`}${sai ? " · sai com o corte" : ""}${!ok ? " · não editável" : ""}</span>
-        <span class="vaba-bloco-palavras">${texto.split(" ").map((w, k) => `<input type="text" class="vaba-leg" data-bloco="${i}" data-k="${k}" value="${h(w)}" size="${Math.max(2, Array.from(w).length + 1)}" maxlength="40" aria-label="Palavra ${k + 1} do bloco ${i + 1}"${ed && ok ? "" : " disabled"}>`).join("")}</span>
-        ${ed && ok ? `<button class="btn peq sec" type="button" data-acao="vaba-desfazer-bloco" data-bloco="${i}" aria-label="Desfazer a edição do bloco ${i + 1}">Desfazer</button>` : ""}
+      return `<div class="vaba-bloco${sai ? " sai" : ""}${excluido ? " vaba-bloco-excluido" : ""}" data-bloco="${i}"><span class="sub">${em !== null ? `Aos ${segVideo(em)} s` : `Bloco ${i + 1}`}${sai ? " · sai com o corte" : ""}${excluido ? " · legenda excluída" : !ok ? " · não editável" : ""}</span>
+        <span class="vaba-bloco-palavras">${excluido ? `<span class="sub">— legenda deste bloco excluída —</span>`
+          : texto.split(" ").map((w, k) => `<input type="text" class="vaba-leg" data-bloco="${i}" data-k="${k}" value="${h(w)}" size="${Math.max(2, Array.from(w).length + 1)}" maxlength="40" aria-label="Palavra ${k + 1} do bloco ${i + 1}"${ed && ok ? "" : " disabled"}>`).join("")}</span>
+        ${ed && ok ? `<button class="btn peq sec" type="button" data-acao="vaba-desfazer-bloco" data-bloco="${i}" aria-label="Desfazer a edição do bloco ${i + 1}">Desfazer</button>${adm && !excluido ? `<button class="btn peq perigo" type="button" data-acao="vaba-excluir-bloco" data-bloco="${i}" aria-label="Excluir a legenda do bloco ${i + 1}">Excluir</button>` : ""}` : ""}
         <span class="vaba-recusa sub" id="vaba-recusa-${i}">${recusas[i] ? h("Recusado: " + (deMapaVideo(MOTIVOS_LEGENDA, recusas[i]) || recusas[i]) + ".") : ""}</span></div>`; }).join("")}`;
 }
 /* 3. Estilo: tamanho, posição e cor (a paleta do banco), a compacta e a amostra */
@@ -2395,6 +2399,12 @@ const ACOES_ABA_VIDEO = {
   "vaba-refazer-salvo"(el){ const v = editavelDaAba(), r = rascunhoMexidoVideo(v);
     r.cortar = juntarCortesVideo([...r.cortar, [Number(el.dataset.de), Number(el.dataset.ate)]], mapaVideo(v).linha_q); redesenharEditorVideo(); },
   "vaba-desfazer-bloco"(el){ const v = editavelDaAba(); delete rascunhoMexidoVideo(v).legenda[el.dataset.bloco]; redesenharEditorVideo(); },
+  // v0.138.0: o administrador exclui a legenda de um bloco (a IA entendeu errado): o trecho fica sem legenda; o resto não muda
+  "vaba-excluir-bloco"(el){
+    if(!ehAdmin()){ recado("Só o administrador exclui um bloco da legenda.", true); return; }
+    if(!confirm("Excluir a legenda deste bloco? A legenda daquele trecho some do vídeo (o áudio e o resto da legenda não mudam). Dá para desfazer antes de montar.")) return;
+    rascunhoMexidoVideo(editavelDaAba()).legenda[el.dataset.bloco] = ""; redesenharEditorVideo();
+  },
   "vaba-ouvir"(el){ const pl = playerDaAba(); pl.currentTime = Math.max(0, Number(el.dataset.em) - 2); pl.scrollIntoView({block:"nearest"}); pl.play?.().catch(() => {}); },
   "vaba-passo"(el){ const pl = playerDaAba(), passo = Number(el.dataset.passo);
     if(!passo){ if(pl.paused) pl.play?.().catch(() => {}); else pl.pause(); return; }

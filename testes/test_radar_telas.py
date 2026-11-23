@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.137.0"
+    assert pagina.inner_text(".versao") == "v0.138.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.137.0" and data == "23/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.138.0" and data == "23/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2477,7 +2477,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.137.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.138.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3406,7 +3406,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.137.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.138.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -4318,6 +4318,18 @@ def test_painel_mostra_os_rascunhos_preparados_pelo_robo(pagina, limpo):
     assert pagina.evaluate("validarConfig('rascunhos', {por_dia: 2, formato: 'flash'})") == ""
     assert "formato" in pagina.evaluate("validarConfig('rascunhos', {formato: 'poema'})")
     assert "por_dia" in pagina.evaluate("validarConfig('rascunhos', {por_dia: 11})")
+
+
+def test_recusa_legenda_admin_exclui_bloco_vazio_v138(pagina):
+    """v0.138.0: no editor da legenda do reel, um bloco VAZIO é exclusão — permitida só para o administrador (recusaLegenda com o
+    5º parâmetro admin). Sem ser admin, o vazio é 'texto_invalido' (a regra de trocar palavra por palavra continua)."""
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    assert pagina.evaluate("recusaLegenda('MEI', '', 1, [], true)") == ""                 # admin: bloco vazio = excluir (sem recusa)
+    assert pagina.evaluate("recusaLegenda('MEI', '', 1, [], false)") == "texto_invalido"  # não-admin: recusa o vazio
+    assert pagina.evaluate("recusaLegenda('MEI', '', 1, [])") == "texto_invalido"          # sem o parâmetro: como antes
+    # com texto, as travas valem para todos (tamanho inválido mesmo sendo admin)
+    assert pagina.evaluate("recusaLegenda('MEI janeiro', 'MEI', 2, [], true)") == "numero_de_palavras"
 
 
 def test_hashtags_por_canal_validacao_e_selecao_v134(pagina):

@@ -562,6 +562,30 @@ def test_editor_de_legenda_troca_palavra_a_palavra_e_recusa_o_resto():
     assert "Dia 30," in so_u["texto_final"]
 
 
+def test_editor_exclui_bloco_com_texto_vazio_so_com_o_tamanho_v138():
+    """v0.138.0: um bloco com texto VAZIO ("u:n") EXCLUI a legenda do bloco — as unidades ficam sem texto (somem do vídeo, sem
+    mexer no tempo das outras). Sem o n (só "u"), ou com o n errado, recusa (não dá para excluir com segurança)."""
+    fala = "Quem ficou com pendência tem até sexta, dia 30, para regularizar o MEI em outubro de 2026."
+    ws = falas("quem ficou com pendência tem até sexta dia trinta para resolver o mei em outubro de dois mil e vinte e seis")
+    base = alinhar.alinhar(fala, ws, [], CFG)
+    u = {x["texto"]: x["u"] for x in base["legenda"]}
+    # exclui o bloco do "MEI" (1 palavra): aceito, a unidade fica sem texto
+    al = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {f"{u['MEI']}:1": ""}})
+    assert al["legenda_ajustes"]["recusados"] == [] and al["legenda_ajustes"]["editados"] == 1
+    assert {x["u"]: x["texto"] for x in al["legenda"]}[u["MEI"]] == ""        # a unidade do MEI ficou sem texto
+    assert " MEI " not in f" {al['texto_final']} "                           # sumiu da legenda
+    # exclui um bloco de 3 palavras: as 3 unidades ficam sem texto
+    al3 = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {f"{u['outubro de 2026.']}:3": ""}})
+    assert al3["legenda_ajustes"]["recusados"] == [] and {x["u"]: x["texto"] for x in al3["legenda"]}[u["outubro de 2026."]] == ""
+    # vazio sem o n (só "u"): recusa
+    so_u = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {str(u["MEI"]): ""}})
+    assert so_u["legenda_ajustes"]["recusados"] == [{"bloco": str(u["MEI"]), "motivo": "texto_invalido"}]
+    # n maior que as palavras que restam a partir do bloco: recusa (não dá para excluir esse alcance)
+    ultimo = base["legenda"][-1]["u"]
+    muitas = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {f"{ultimo}:99": ""}})
+    assert muitas["legenda_ajustes"]["recusados"] == [{"bloco": f"{ultimo}:99", "motivo": "numero_de_palavras"}]
+
+
 def test_edicoes_da_legenda_valem_na_ordem_da_lista_e_a_nova_vence():
     """A edição antiga ("1:1", de uma montagem anterior) cai dentro do bloco que o administrador editou agora ("0:4"). No objeto, o jsonb
     devolve as chaves em outra ordem (as curtas primeiro, depois por byte: "0:4" antes de "1:1") e a antiga desfazia a nova sem

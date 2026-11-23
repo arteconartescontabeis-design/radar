@@ -316,7 +316,22 @@ def _edicao(unidades: list[dict], chave, novo, gl: dict) -> str | None:
         return "bloco_inexistente"
     u = int(m.group(1))
     novo = " ".join(str(novo or "").split())
-    if not novo or len(novo) > 120 or _MARCACAO.search(novo):
+    # v0.138.0: bloco VAZIO = EXCLUIR a legenda do bloco (autorização do administrador, na tela). As unidades do bloco ficam sem
+    # texto — somem da legenda do vídeo (legenda.py descarta as vazias) sem mexer no tempo das outras, então o karaokê não
+    # dessincroniza. Precisa do n ("u:n", o tamanho do bloco) para saber o alcance; sem ele, não dá para excluir com segurança.
+    if novo == "":
+        if m.group(2) is None:
+            return "texto_invalido"
+        n_bloco, velhas, k = int(m.group(2)), [], u
+        while k < len(unidades) and len(velhas) < n_bloco:
+            velhas += [(k, w) for w in unidades[k]["texto"].split()]
+            k += 1
+        if len(velhas) != n_bloco:
+            return "numero_de_palavras"
+        for kk in sorted({k for k, _ in velhas}):
+            unidades[kk]["texto"] = ""
+        return None
+    if len(novo) > 120 or _MARCACAO.search(novo):
         return "texto_invalido"
     novas = novo.split()
     if m.group(2) is not None and len(novas) != int(m.group(2)):
