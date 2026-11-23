@@ -586,6 +586,31 @@ def test_editor_exclui_bloco_com_texto_vazio_so_com_o_tamanho_v138():
     assert muitas["legenda_ajustes"]["recusados"] == [{"bloco": f"{ultimo}:99", "motivo": "numero_de_palavras"}]
 
 
+def test_editor_tira_uma_palavra_que_a_ia_errou_v139():
+    """v0.139.0: o administrador pode TIRAR palavra(s) que a IA transcreveu errado — o bloco vem com MENOS palavras que o n da
+    chave. As que ficam casam na ordem (a mesma parecença de sempre) e a unidade da tirada fica sem texto, sem mexer no tempo das
+    outras. Acrescentar palavra, ou pôr uma palavra estranha no lugar, é recusado."""
+    fala = "Quem ficou com pendência tem até sexta, dia 30, para regularizar o MEI em outubro de 2026."
+    ws = falas("quem ficou com pendência tem até sexta dia trinta para resolver o mei em outubro de dois mil e vinte e seis")
+    base = alinhar.alinhar(fala, ws, [], CFG)
+    u = {x["texto"]: x["u"] for x in base["legenda"]}
+    # tira o "de" do bloco "outubro de 2026." (3 palavras -> 2): a unidade fica "outubro 2026." e o ano continua
+    al = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {f"{u['outubro de 2026.']}:3": "outubro 2026."}})
+    assert al["legenda_ajustes"]["recusados"] == [] and al["legenda_ajustes"]["editados"] == 1
+    assert {x["u"]: x["texto"] for x in al["legenda"]}[u["outubro de 2026."]] == "outubro 2026."
+    assert al["texto_final"].endswith("em outubro 2026.") and " de 2026" not in al["texto_final"]
+    # tira a 2ª palavra de um bloco de 2 unidades ("Quem ficou" -> "Quem"): a unidade do "ficou" fica sem texto
+    al2 = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {f"{u['Quem']}:2": "Quem"}})
+    assert al2["legenda_ajustes"]["recusados"] == [] and {x["u"]: x["texto"] for x in al2["legenda"]}[u["ficou"]] == ""
+    assert al2["texto_final"].startswith("Quem ") and "ficou" not in al2["texto_final"] and "com pendência" in al2["texto_final"]
+    # acrescentar palavra (mais que o n do bloco): recusa
+    mais = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {f"{u['MEI']}:1": "MEI CBS"}})
+    assert mais["legenda_ajustes"]["recusados"] == [{"bloco": f"{u['MEI']}:1", "motivo": "numero_de_palavras"}]
+    # palavra estranha no lugar (não é só remoção): recusa
+    estranha = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {f"{u['Quem']}:2": "multa"}})
+    assert estranha["legenda_ajustes"]["recusados"] == [{"bloco": f"{u['Quem']}:2", "motivo": "palavra_diferente"}]
+
+
 def test_edicoes_da_legenda_valem_na_ordem_da_lista_e_a_nova_vence():
     """A edição antiga ("1:1", de uma montagem anterior) cai dentro do bloco que o administrador editou agora ("0:4"). No objeto, o jsonb
     devolve as chaves em outra ordem (as curtas primeiro, depois por byte: "0:4" antes de "1:1") e a antiga desfazia a nova sem

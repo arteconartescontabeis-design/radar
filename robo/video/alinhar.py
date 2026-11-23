@@ -334,7 +334,32 @@ def _edicao(unidades: list[dict], chave, novo, gl: dict) -> str | None:
     if len(novo) > 120 or _MARCACAO.search(novo):
         return "texto_invalido"
     novas = novo.split()
-    if m.group(2) is not None and len(novas) != int(m.group(2)):
+    n_decl = int(m.group(2)) if m.group(2) is not None else None
+    # v0.139.0: MENOS palavras que o bloco (com o n na chave) = o administrador TIROU a(s) palavra(s) que a IA transcreveu errado
+    # (erro da análise, não do nosso texto; autorizado na tela). Mantém as que ficam, na ordem, com a MESMA checagem de
+    # sentido/parecença de sempre, e esvazia as unidades das tiradas — o tempo das outras não muda (legenda.py descarta as
+    # unidades sem texto, como na exclusão do bloco). Acrescentar palavra não dá (não há tempo para ela).
+    if n_decl is not None and 0 < len(novas) < n_decl:
+        bloco, k = [], u
+        while k < len(unidades) and len(bloco) < n_decl:
+            bloco += [(k, w) for w in unidades[k]["texto"].split()]
+            k += 1
+        if len(bloco) != n_decl:
+            return "numero_de_palavras"
+        fica, j = {}, 0
+        for ku, velha in bloco:
+            nova = novas[j] if j < len(novas) else None
+            if nova is not None and numeros.sentido(velha, gl) == numeros.sentido(nova, gl):
+                lv, ln = numeros.letras(velha), numeros.letras(nova)
+                if ln == lv or ln in unidades[ku]["perto"] or difflib.SequenceMatcher(None, lv, ln).ratio() >= SEMELHANCA_EDITOR:
+                    fica.setdefault(ku, []).append(nova)
+                    j += 1
+        if j != len(novas):           # sobrou palavra nova que não casa com nenhuma que ficou: não é só remoção
+            return "palavra_diferente"
+        for ku in {ku for ku, _ in bloco}:
+            unidades[ku]["texto"] = " ".join(fica.get(ku, []))
+        return None
+    if n_decl is not None and len(novas) != n_decl:
         return "numero_de_palavras"
     velhas, k = [], u
     while k < len(unidades) and len(velhas) < len(novas):

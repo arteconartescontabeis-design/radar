@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.138.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.139.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -1294,10 +1294,18 @@ function recusaLegenda(velho, novo, n, perto, admin){
   if(!novo) return admin ? "" : "texto_invalido";
   if(novo.length > 120 || /[{}\\<>\u0000-\u001f\u007f]/.test(novo)) return "texto_invalido";
   const vs = velho.split(" ").filter(Boolean), ns = novo.split(" ").filter(Boolean);
-  if(ns.length !== n || vs.length !== ns.length) return "numero_de_palavras";
   const termos = termosDoGlossario();
-  if(sentidoDoTexto(vs, termos) !== sentidoDoTexto(ns, termos)) return "numero_ou_termo";
   const doRoteiro = new Set((Array.isArray(perto) ? perto : String(perto || "").split(/\s+/)).map(letrasFala).filter(Boolean));
+  const parecida = (ve, no) => sentidoDaPalavra(ve, termos) === sentidoDaPalavra(no, termos)
+    && (letrasFala(ve) === letrasFala(no) || doRoteiro.has(letrasFala(no)) || razaoVideo(letrasFala(ve), letrasFala(no)) >= 0.6);
+  // v0.139.0: só o administrador pode TIRAR palavra(s) que a IA transcreveu errado: menos palavras que o bloco; as que ficam casam na ordem
+  if(admin && ns.length && ns.length < n && vs.length === n){
+    let j = 0;
+    for(const ve of vs) if(j < ns.length && parecida(ve, ns[j])) j++;
+    return j === ns.length ? null : "palavra_diferente";
+  }
+  if(ns.length !== n || vs.length !== ns.length) return "numero_de_palavras";
+  if(sentidoDoTexto(vs, termos) !== sentidoDoTexto(ns, termos)) return "numero_ou_termo";
   for(let i = 0; i < vs.length; i++){
     if(sentidoDaPalavra(vs[i], termos) !== sentidoDaPalavra(ns[i], termos)) return "numero_ou_termo";
     const lv = letrasFala(vs[i]), ln = letrasFala(ns[i]);
@@ -2077,14 +2085,14 @@ function htmlLegendaAbaVideo(v, r, ed){
   const blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista), recusas = recusasLegendaVideo(v, r), rec = listaVideo(objVideo(objVideo(v.relatorio).legenda).recusados);
   const pulos = pulosDaPreviaVideo(v, r), adm = ehAdmin();   // v0.138.0: só o administrador exclui um bloco da legenda
   if(!blocos.length) return `<p class="sub">A lista dos blocos da legenda não veio no relatório.</p>`;
-  return `<p class="sub">Troque palavra por palavra: cada palavra nova é a do roteiro ou parecida com a que estava; número, data, mês e termo do glossário não mudam aqui (se a fala está errada, corte o trecho ou grave de novo).${adm ? " Só o administrador pode <b>Excluir</b> um bloco: a legenda daquele trecho some do vídeo (o áudio e o resto da legenda não mudam)." : ""}</p>
+  return `<p class="sub">Troque palavra por palavra: cada palavra nova é a do roteiro ou parecida com a que estava; número, data, mês e termo do glossário não mudam aqui (se a fala está errada, corte o trecho ou grave de novo).${adm ? " Só o administrador pode <b>tirar</b> uma palavra (o <b>×</b> ao lado dela) que a IA transcreveu errado, ou <b>Excluir</b> o bloco inteiro: some só da legenda (o áudio e o resto não mudam)." : ""}</p>
     ${rec.length ? `<div class="aviso alerta" id="vaba-recusados">Na montagem anterior, foi recusado: ${rec.map(x => `bloco ${h(x.bloco)}, ${h(deMapaVideo(MOTIVOS_LEGENDA, x.motivo) || x.motivo)}`).join("; ")}.</div>` : ""}
     ${blocos.map((b, i) => { const ok = Number.isInteger(numVideo(b.u)) && Number.isInteger(numVideo(b.palavras)), em = numVideo(b.em_s);
       const excluido = ok && r.legenda[i] === "", texto = excluido ? "" : String(r.legenda[i] ?? b.texto ?? "");
       const sai = em !== null && pulos.some(([x, y]) => em >= x - 0.01 && em < y);
       return `<div class="vaba-bloco${sai ? " sai" : ""}${excluido ? " vaba-bloco-excluido" : ""}" data-bloco="${i}"><span class="sub">${em !== null ? `Aos ${segVideo(em)} s` : `Bloco ${i + 1}`}${sai ? " · sai com o corte" : ""}${excluido ? " · legenda excluída" : !ok ? " · não editável" : ""}</span>
         <span class="vaba-bloco-palavras">${excluido ? `<span class="sub">— legenda deste bloco excluída —</span>`
-          : texto.split(" ").map((w, k) => `<input type="text" class="vaba-leg" data-bloco="${i}" data-k="${k}" value="${h(w)}" size="${Math.max(2, Array.from(w).length + 1)}" maxlength="40" aria-label="Palavra ${k + 1} do bloco ${i + 1}"${ed && ok ? "" : " disabled"}>`).join("")}</span>
+          : (ws => ws.map((w, k) => `<span class="vaba-palavra"><input type="text" class="vaba-leg" data-bloco="${i}" data-k="${k}" value="${h(w)}" size="${Math.max(2, Array.from(w).length + 1)}" maxlength="40" aria-label="Palavra ${k + 1} do bloco ${i + 1}"${ed && ok ? "" : " disabled"}>${adm && ed && ok && ws.length > 1 ? `<button class="vaba-tirar" type="button" data-acao="vaba-tirar-palavra" data-bloco="${i}" data-k="${k}" title="Tirar esta palavra (erro da IA)" aria-label="Tirar a palavra ${k + 1} do bloco ${i + 1}">×</button>` : ""}</span>`).join(""))(texto.split(" "))}</span>
         ${ed && ok ? `<button class="btn peq sec" type="button" data-acao="vaba-desfazer-bloco" data-bloco="${i}" aria-label="Desfazer a edição do bloco ${i + 1}">Desfazer</button>${adm && !excluido ? `<button class="btn peq perigo" type="button" data-acao="vaba-excluir-bloco" data-bloco="${i}" aria-label="Excluir a legenda do bloco ${i + 1}">Excluir</button>` : ""}` : ""}
         <span class="vaba-recusa sub" id="vaba-recusa-${i}">${recusas[i] ? h("Recusado: " + (deMapaVideo(MOTIVOS_LEGENDA, recusas[i]) || recusas[i]) + ".") : ""}</span></div>`; }).join("")}`;
 }
@@ -2404,6 +2412,19 @@ const ACOES_ABA_VIDEO = {
     if(!ehAdmin()){ recado("Só o administrador exclui um bloco da legenda.", true); return; }
     if(!confirm("Excluir a legenda deste bloco? A legenda daquele trecho some do vídeo (o áudio e o resto da legenda não mudam). Dá para desfazer antes de montar.")) return;
     rascunhoMexidoVideo(editavelDaAba()).legenda[el.dataset.bloco] = ""; redesenharEditorVideo();
+  },
+  // v0.139.0: o administrador TIRA uma palavra que a IA transcreveu errado (erro da análise, não do nosso texto): some só
+  // aquela palavra da legenda; as outras ficam com o tempo do karaokê. Para tirar a última, usa-se Excluir (o bloco inteiro).
+  "vaba-tirar-palavra"(el){
+    if(!ehAdmin()){ recado("Só o administrador tira uma palavra da legenda.", true); return; }
+    const v = editavelDaAba(), r = rascunhoMexidoVideo(v), i = el.dataset.bloco, k = Number(el.dataset.k);
+    const b = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista)[Number(i)];
+    const ws = String(r.legenda[i] ?? b?.texto ?? "").split(" ").filter(Boolean);
+    if(!(k >= 0 && k < ws.length)) return;
+    if(ws.length <= 1){ recado("Para tirar a última palavra, use Excluir (o bloco inteiro).", true); return; }
+    ws.splice(k, 1);
+    r.legenda[i] = ws.join(" ");
+    redesenharEditorVideo();
   },
   "vaba-ouvir"(el){ const pl = playerDaAba(); pl.currentTime = Math.max(0, Number(el.dataset.em) - 2); pl.scrollIntoView({block:"nearest"}); pl.play?.().catch(() => {}); },
   "vaba-passo"(el){ const pl = playerDaAba(), passo = Number(el.dataset.passo);
