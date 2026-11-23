@@ -700,7 +700,7 @@ def test_setup_duas_vezes_com_as_tabelas_novas(tmp_path):
             with conectar(banco) as c:
                 assert estado(c) == antes
                 assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {**PADRAO, "vencimento": False}
-                assert c.execute("select count(*) from radar_config").fetchone()[0] == 11
+                assert c.execute("select count(*) from radar_config").fetchone()[0] == 12
         with conectar(banco) as c:
             assert c.execute("""select count(*) from pg_class k join pg_namespace n on n.oid = k.relnamespace
                                 where n.nspname = 'public' and k.relkind = 'r' and k.relname like 'radar\\_%' and k.relrowsecurity""").fetchone()[0] == 42

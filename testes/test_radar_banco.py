@@ -1320,7 +1320,7 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (42, 13, 8, 11, 2, 0)
+        assert _resumo("radar_parcial") == (42, 13, 8, 12, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
@@ -1347,7 +1347,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (42, 13, 8, 11, 1, 1)       # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (42, 13, 8, 12, 1, 1)       # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -6726,18 +6726,21 @@ def test_capa_automatica_respeita_o_grupo_de_rosto_v137(limpo):
         img_soc = c.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
         c.execute("select radar_foto_acervo_gravar('ambiente', 'Recepção', %s)", (img_amb,))
         c.execute("select radar_foto_acervo_gravar('socios', 'Sócio', %s)", (img_soc,))
-    # padrão (config 'capa' semeada como {"rosto": "sem"}) -> grupo Ambiente
-    assert limpo.execute("select valor->>'rosto' from radar_config where chave = 'capa'").fetchone()[0] == "sem"
-    with como("authenticated", ADMIN) as c:
-        assert c.execute("select radar_assunto_foto(%s)", (a_sem,)).fetchone()[0]["imagem_id"] == img_amb
-    # 'com' -> grupo Sócios (com rosto)
-    limpo.execute("""update radar_config set valor = '{"rosto": "com"}' where chave = 'capa'""")
-    with como("authenticated", ADMIN) as c:
-        assert c.execute("select radar_assunto_foto(%s)", (a_com,)).fetchone()[0]["imagem_id"] == img_soc
-    # 'ambos' -> uma das duas
-    limpo.execute("""update radar_config set valor = '{"rosto": "ambos"}' where chave = 'capa'""")
-    with como("authenticated", ADMIN) as c:
-        assert c.execute("select radar_assunto_foto(%s)", (a_ambos,)).fetchone()[0]["imagem_id"] in (img_amb, img_soc)
+    try:
+        # padrão (config 'capa' semeada como {"rosto": "sem"}) -> grupo Ambiente
+        assert limpo.execute("select valor->>'rosto' from radar_config where chave = 'capa'").fetchone()[0] == "sem"
+        with como("authenticated", ADMIN) as c:
+            assert c.execute("select radar_assunto_foto(%s)", (a_sem,)).fetchone()[0]["imagem_id"] == img_amb
+        # 'com' -> grupo Sócios (com rosto)
+        limpo.execute("""update radar_config set valor = '{"rosto": "com"}' where chave = 'capa'""")
+        with como("authenticated", ADMIN) as c:
+            assert c.execute("select radar_assunto_foto(%s)", (a_com,)).fetchone()[0]["imagem_id"] == img_soc
+        # 'ambos' -> uma das duas
+        limpo.execute("""update radar_config set valor = '{"rosto": "ambos"}' where chave = 'capa'""")
+        with como("authenticated", ADMIN) as c:
+            assert c.execute("select radar_assunto_foto(%s)", (a_ambos,)).fetchone()[0]["imagem_id"] in (img_amb, img_soc)
+    finally:
+        limpo.execute("""update radar_config set valor = '{"rosto": "sem"}' where chave = 'capa'""")   # não polui os outros testes
 
 
 def test_fotos_acervo_ficam_fora_da_limpeza_de_imagens(limpo):
