@@ -9299,6 +9299,7 @@ insert into public.radar_config (chave, valor) values
   ('fale_conosco', '{"setores": [{"nome": "Geral", "rotulo": "Atendimento Geral", "telefones": [{"numero": "48-3242-0530", "whatsapp": true}], "emails": ["artecon@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Contábil", "rotulo": "Setor Contábil", "telefones": [], "emails": ["dc@artecon.cnt.br"], "equipe": [], "responsaveis_rotulo": "Contadores Responsáveis", "responsaveis": []}, {"nome": "Setor Fiscal", "rotulo": "Setor Fiscal", "telefones": [], "emails": ["df@artecon.cnt.br"], "equipe": []}, {"nome": "Departamento Pessoal", "rotulo": "Departamento Pessoal", "telefones": [], "emails": ["rh@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Institucional", "rotulo": "Setor Institucional", "telefones": [], "emails": ["societario@artecon.cnt.br"], "equipe": []}], "observacao": ""}'::jsonb),
   ('assinatura', '{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves", "cnpj": "", "crc": ""}'::jsonb),
   ('rascunhos', '{"ligado": true, "nota_minima": 9, "por_dia": 2, "dias": 3, "formato": "informativo"}'::jsonb),
+  ('capa', '{"rosto": "sem"}'::jsonb),
   ('pauta', '{"agenda_ligada": true, "hora_padrao": "09:30", "janela_horas": 6, "hashtags": {"instagram": ["#contabilidade", "#contador", "#escritoriocontabil", "#contabil", "#contabilidadedigital", "#empreendedorismo", "#empreendedor", "#gestaofinanceira", "#impostoderenda", "#simplesnacional", "#mei", "#reformatributaria", "#esocial", "#aberturadeempresa", "#pequenasempresas", "#palhoca", "#saojose", "#florianopolis", "#santacatarina", "#contabilidadesc"], "facebook": ["#contabilidade", "#contador", "#simplesnacional", "#santacatarina", "#palhoca"], "site": ["Simples Nacional", "MEI", "Reforma Tributária", "CBS e IBS", "eSocial", "Abertura de empresa"]}}'::jsonb),
   ('lembretes', '{"ligado": true, "hora": "16:00", "de": "08:00", "ate": "20:00", "aprovacao_horas": 24, "parada_horas": 3, "pauta": true, "aprovacao": true, "video": true, "noticia": true}'::jsonb),
   ('corretor_video', '{"glossario": ["eSocial", "DCTFWeb", "IBS", "CBS", "Simples Nacional", "MEI", "CNPJ", "DAS", "DARF", "FGTS", "Cofins", "PIS", "PGDAS-D", "Artecon", "Palhoça"], "variantes": {"eSocial": ["e social", "é social"], "DCTFWeb": ["dctf web"], "IBS": ["ips", "ibis"], "CBS": ["cps"], "DARF": ["dar f"], "FGTS": ["fgt s"], "Cofins": ["confins"], "PIS": ["piz"], "CNPJ": ["cnp j"], "PGDAS-D": ["pg das d", "pgdasd"], "Artecon": ["arte com", "artcon"]}, "duracao_max_s": 90, "pausa_max_s": 1.0, "pausa_bloco_s": 0.8, "lufs": -14, "cartela_s": 3, "cartela_extra": "", "limite_min_mes": 30, "retencao_dias": 30, "retencao_publicado_dias": 30}'::jsonb),
@@ -11736,6 +11737,9 @@ language plpgsql security definer set search_path = public as $$
 declare
   v_img  bigint;
   v_foto record;
+  -- v0.137.0: a capa automática usa o grupo escolhido em Configurações → "Fotos da Artecon" (radar_config.capa.rosto):
+  -- 'sem' = Ambiente (padrão), 'com' = Sócios (com rosto), 'ambos' = os dois no rodízio.
+  v_rosto text := coalesce((select c.valor->>'rosto' from public.radar_config c where c.chave = 'capa'), 'sem');
 begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
     raise exception 'RADAR353: só o editor ou o administrador prepara a imagem da notícia' using errcode = 'P0001';
@@ -11750,7 +11754,10 @@ begin
   end if;
   select a.id, a.imagem_id, a.nome into v_foto
     from public.radar_fotos_acervo a
-   where a.grupo = 'ambiente' and exists (select 1 from public.radar_imagens i where i.id = a.imagem_id)
+   where a.grupo = any(case v_rosto when 'com'   then array['socios']
+                                    when 'ambos' then array['ambiente','socios']
+                                    else array['ambiente'] end)
+     and exists (select 1 from public.radar_imagens i where i.id = a.imagem_id)
    order by a.usada_em asc nulls first, random()
    limit 1;
   if v_foto.id is null then

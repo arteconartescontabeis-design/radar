@@ -1041,7 +1041,7 @@ def test_trocar_imagem_autor_ou_fonte_de_conteudo_aprovado_volta_para_revisao(li
 def test_configuracoes_iniciais_e_quem_pode_alterar(limpo):
     conf = dict(limpo.execute("select chave, valor from radar_config").fetchall())
     assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura", "relevancia", "rascunhos", "pauta", "termo_imagem",
-                         "corretor_video", "lembretes", "polimento"}   # v0.9.0: rascunhos; v0.21.0: pauta; v0.22.0: corretor_video; v0.29.0: lembretes; v0.57.0: polimento
+                         "corretor_video", "lembretes", "polimento", "capa"}   # v0.9.0: rascunhos; v0.21.0: pauta; v0.22.0: corretor_video; v0.29.0: lembretes; v0.57.0: polimento; v0.137.0: capa
     assert len(conf["obrigacoes"]) == 28 and conf["assinatura"]["responsavel"] == "Cleiver Gonçalves"   # v0.30.0: + o 13º e as anuais
     # v0.30.0: o 13º e as anuais vêm no fim, com o mês do vencimento ("mes") e, quando as notícias usam outro nome, os "termos"
     assert [(o["nome"], o.get("mes"), "termos" in o) for o in conf["obrigacoes"][22:]] == [
@@ -1052,7 +1052,7 @@ def test_configuracoes_iniciais_e_quem_pode_alterar(limpo):
     assert (conf["assinatura"]["cnpj"], conf["assinatura"]["crc"]) == ("", "")   # v0.20.0: identificação legal vazia até o administrador preencher
     assert all(o["regra"] in ("quinto_dia_util", "dia", "ultimo_dia_util") for o in conf["obrigacoes"])
     with como("authenticated", LEITOR) as c:
-        assert c.execute("select count(*) from radar_config").fetchone()[0] == 11         # a equipe lê (v0.22.0: + corretor_video; v0.29.0: + lembretes; v0.46.0: + termo_imagem; v0.57.0: + polimento)
+        assert c.execute("select count(*) from radar_config").fetchone()[0] == 12         # a equipe lê (v0.137.0: + capa; v0.22.0: + corretor_video; v0.29.0: + lembretes; v0.46.0: + termo_imagem; v0.57.0: + polimento)
     with como("authenticated", EDITOR) as c:
         assert c.execute("update radar_config set valor = '[]' where chave = 'feriados_extras' returning chave").fetchone() is None
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -1291,7 +1291,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (42, 13, 8, 11, 1, 0)         # v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e "termo_imagem"; v0.57.0: + radar_polimento_uso e "polimento"
+        assert _resumo("radar_sem_tx") == (42, 13, 8, 12, 1, 0)         # v0.137.0: + a chave "capa"; v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e "termo_imagem"; v0.57.0: + radar_polimento_uso e "polimento"
         with conectar("radar_sem_tx") as c:
             assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.50.0", [], 42)
             # v0.31.0 (revisão): na instalação nova as fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
@@ -6715,6 +6715,29 @@ def test_fotos_acervo_validacoes_imagem_em_uso_e_limite(limpo):
         nova = c.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
         with pytest.raises(psycopg.errors.RaiseException, match="RADAR347"):
             c.execute("select radar_foto_acervo_gravar('socios', 'A 301ª', %s)", (nova,))
+
+
+def test_capa_automatica_respeita_o_grupo_de_rosto_v137(limpo):
+    """v0.137.0: a capa automática (radar_assunto_foto) usa o grupo escolhido em radar_config.capa.rosto —
+    'sem' = Ambiente (padrão), 'com' = Sócios (com rosto), 'ambos' = os dois no rodízio."""
+    a_sem, a_com, a_ambos = novo_assunto(limpo), novo_assunto(limpo), novo_assunto(limpo)
+    with como("authenticated", ADMIN) as c:
+        img_amb = c.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+        img_soc = c.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+        c.execute("select radar_foto_acervo_gravar('ambiente', 'Recepção', %s)", (img_amb,))
+        c.execute("select radar_foto_acervo_gravar('socios', 'Sócio', %s)", (img_soc,))
+    # padrão (config 'capa' semeada como {"rosto": "sem"}) -> grupo Ambiente
+    assert limpo.execute("select valor->>'rosto' from radar_config where chave = 'capa'").fetchone()[0] == "sem"
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_assunto_foto(%s)", (a_sem,)).fetchone()[0]["imagem_id"] == img_amb
+    # 'com' -> grupo Sócios (com rosto)
+    limpo.execute("""update radar_config set valor = '{"rosto": "com"}' where chave = 'capa'""")
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_assunto_foto(%s)", (a_com,)).fetchone()[0]["imagem_id"] == img_soc
+    # 'ambos' -> uma das duas
+    limpo.execute("""update radar_config set valor = '{"rosto": "ambos"}' where chave = 'capa'""")
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_assunto_foto(%s)", (a_ambos,)).fetchone()[0]["imagem_id"] in (img_amb, img_soc)
 
 
 def test_fotos_acervo_ficam_fora_da_limpeza_de_imagens(limpo):
