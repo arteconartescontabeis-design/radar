@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.139.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.140.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -379,10 +379,13 @@ async function telaSemana(){
       <button class="btn peq sec" type="button" data-acao="pauta-semana" data-passo="0">Esta semana</button>
       <button class="btn peq sec" type="button" data-acao="pauta-semana" data-passo="1">Próxima semana →</button>
       <b id="pauta-semana-titulo">Semana de ${seg.slice(8, 10)}/${seg.slice(5, 7)} a ${dom.slice(8, 10)}/${dom.slice(5, 7)}/${dom.slice(0, 4)}</b>
-      <button class="btn peq verde" type="button" data-acao="pauta-ideias-abrir" style="margin-left:auto">✨ Gerar novas pautas com IA</button></div>
+      ${adm ? `<button class="btn peq verde" type="button" data-acao="pauta-nova-reel-abrir" style="margin-left:auto">+ Nova peça (Reel)</button>
+      <button class="btn peq verde" type="button" data-acao="pauta-ideias-abrir">✨ Gerar novas pautas com IA</button>`
+      : `<button class="btn peq verde" type="button" data-acao="pauta-ideias-abrir" style="margin-left:auto">✨ Gerar novas pautas com IA</button>`}</div>
     ${E.pauta.ideiasForm || E.pauta.ideias ? `<div class="painel" id="pauta-ideias">
       <p class="sub" style="margin:0 0 4px">Preenche os próximos <b>dias úteis livres</b> com assuntos sugeridos pela IA (um por dia). Escolha quantos dias quer gerar — 1 para uma pauta só, ou vários de uma vez.${adm ? "" : " As sugestões aparecem para você conferir; só o administrador adiciona ao calendário."}</p>
       ${E.pauta.ideiasForm ? blocoFormIdeias() : ""}${E.pauta.ideias ? blocoListaIdeias(E.pauta.ideias, adm) : ""}</div>` : ""}
+    ${adm && E.pauta.novaReel ? `<div class="painel" id="pauta-nova-reel-painel">${formNovaReel(hoje)}</div>` : ""}
     ${legenda}
     <div class="pauta-semana">${Array.from({length:7}, (_, i) => cartao(somarDias(seg, i))).join("")}</div>
     ${ed ? `<div class="painel pauta-ferramentas"><div class="acoes" style="margin:0"><button class="btn sec" type="button" data-acao="pauta-pessoas">Pessoas e termos</button>
@@ -433,6 +436,21 @@ function formNovaPeca(d, hoje){
     <label for="pauta-nova-observacao">Observação (opcional)</label><textarea id="pauta-nova-observacao" name="observacao" rows="2" maxlength="1000"></textarea>
     <p class="sub">Reel: escolha o formato Reel (o quadro do corretor de vídeo aparece na peça). As pessoas são marcadas depois, na própria peça, entre as cadastradas em Pessoas e termos.</p>
     <div class="acoes"><button class="btn verde">Criar a peça</button><button class="btn sec" type="button" data-acao="pauta-nova-cancelar">Cancelar</button></div>
+  </form>`;
+}
+
+/* v0.140.0: "+ Nova peça (Reel)" — atalho no topo da Pauta para criar um reel em qualquer dia (de hoje em diante), sem depender do
+   "+ Nova peça" do dia. Reaproveita o mesmo envio (forms.novaPeca) e a função radar_pauta_criar; o tipo e o formato ficam travados
+   em "reel" (campos ocultos) e há um seletor de dia (padrão hoje). Depois de criar, a peça abre para pôr as informações e usar o
+   "Gerar com IA" que já existe. */
+function formNovaReel(hoje){
+  return `<form class="pauta-nova" id="pauta-nova-reel" data-form="novaPeca" novalidate>
+    <input type="hidden" name="tipo" value="reel"><input type="hidden" name="formato" value="reel">
+    <p class="sub">Novo <b>reel</b>: escolha o dia e escreva o assunto. A peça abre em seguida para você pôr as informações e clicar em “Gerar com IA” (o roteiro e as legendas). Ela entra planejada: nada é publicado sem a aprovação do administrador.</p>
+    <label for="pauta-nova-reel-data">Dia</label><input id="pauta-nova-reel-data" type="date" name="data" value="${h(hoje)}" min="${h(hoje)}" required>
+    <label for="pauta-nova-reel-assunto">Assunto</label><textarea id="pauta-nova-reel-assunto" name="assunto" rows="3" maxlength="1000" required placeholder="Ex.: MEI pode ter até dois empregados a partir de 2027"></textarea>
+    <label for="pauta-nova-reel-objetivo">Objetivo (opcional)</label><input id="pauta-nova-reel-objetivo" type="text" name="objetivo" maxlength="200">
+    <div class="acoes"><button class="btn verde">Criar reel</button><button class="btn sec" type="button" data-acao="pauta-nova-reel-cancelar">Cancelar</button></div>
   </form>`;
 }
 
@@ -1600,11 +1618,11 @@ const PAUTA = {
   // não gravam nada: navegação e mudanças só na tela (o que grava é feito uma ação por vez)
   navegacao:["pauta-semana", "abrir-peca", "pauta-pessoas", "pauta-relatorios-reels", "pauta-importar-cancelar", "peca-conf-linha", "peca-conf-remover",
              "peca-cartao-linha", "peca-cartao-remover", "peca-agenda", "peca-completar-legenda", "peca-baixar", "peca-copiar-legenda", "peca-copiar-roteiro",
-             "peca-usar-ia", "pauta-nova", "pauta-nova-cancelar"],
+             "peca-usar-ia", "pauta-nova", "pauta-nova-cancelar", "pauta-nova-reel-abrir", "pauta-nova-reel-cancelar"],
   acoes:{
     "pauta-semana"(el){ const passo = Number(el.dataset.passo), base = E.pauta.semana || segundaDe(hojeBrasilia());
-      E.pauta.semana = passo ? somarDias(base, 7 * passo) : segundaDe(hojeBrasilia()); E.pauta.nova = null; return desenhar(); },
-    "abrir-peca"(el){ E.aba = "pauta"; E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; window.scrollTo(0, 0); return desenhar(); },   // v0.111.0: E.aba para abrir a peça também vindo da aba Publicações
+      E.pauta.semana = passo ? somarDias(base, 7 * passo) : segundaDe(hojeBrasilia()); E.pauta.nova = null; E.pauta.novaReel = null; return desenhar(); },
+    "abrir-peca"(el){ E.aba = "pauta"; E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; E.pauta.novaReel = null; window.scrollTo(0, 0); return desenhar(); },   // v0.111.0: E.aba para abrir a peça também vindo da aba Publicações
     "pauta-pessoas"(){ E.pauta.vista = "pessoas"; E.pauta.peca = null; E.pauta.nova = null; window.scrollTo(0, 0); return desenhar(); },
     // v0.75.0: os dois relatórios dos reels agendados (Excel e Word), baixados na hora
     "pauta-relatorios-reels"(){ return relatoriosDosReels(); },
@@ -1624,6 +1642,10 @@ const PAUTA = {
         (r && Number(r.agendados_remarcados) ? " A publicação agendada foi remarcada junto." : ""));
     },
     "pauta-nova-cancelar"(){ E.pauta.nova = null; return desenhar(); },
+    // v0.140.0: "+ Nova peça (Reel)" no topo — abre o formulário com o seletor de dia (travado em reel); Cancelar fecha sem gravar
+    "pauta-nova-reel-abrir"(){ E.pauta.novaReel = true; E.pauta.nova = null; E.pauta.ideiasForm = false; E.pauta.ideias = null; E.pauta.previa = null;
+      return desenhar().then(() => { $("#pauta-nova-reel-painel")?.scrollIntoView({block:"center"}); $("#pauta-nova-reel-assunto")?.focus(); }); },
+    "pauta-nova-reel-cancelar"(){ E.pauta.novaReel = false; return desenhar(); },
     "pauta-importar-cancelar"(){ E.pauta.previa = null; return desenhar(); },
     async "pauta-importar-gravar"(){
       const pr = E.pauta.previa; if(!pr || pr.erros.length || !pr.linhas.length) return;
@@ -1976,12 +1998,13 @@ const PAUTA = {
     /* v0.28.0: "+ Nova peça": o banco confere de novo (só o administrador, o dia livre e não passado, os campos) e devolve o número; a
        peça abre em seguida, planejada */
     async novaPeca(f){
-      const v = n => (f.elements[n]?.value || "").trim(), dia = f.dataset.dia;
+      const v = n => (f.elements[n]?.value || "").trim(), dia = f.dataset.dia || v("data");   // v0.140.0: o dia vem do atributo (por dia) ou do seletor (Nova peça (Reel))
+      if(!dia) throw new ErroApi("Escolha o dia da peça.");
       if(!v("tipo") || !v("formato")) throw new ErroApi("Escolha o tipo e o formato da peça.");
       if(!v("assunto")) throw new ErroApi("Escreva o assunto da peça.");
       const id = await rpc("radar_pauta_criar", {p_peca:{data:dia, tipo:v("tipo"), formato:v("formato"), assunto:v("assunto"),
         objetivo:v("objetivo"), quem_aparece:v("quem_aparece"), observacao:v("observacao")}});
-      E.pauta.nova = null; E.pauta.previa = null; E.pauta.peca = Number(id); E.pauta.vista = "semana"; window.scrollTo(0, 0);
+      E.pauta.nova = null; E.pauta.novaReel = false; E.pauta.previa = null; E.pauta.peca = Number(id); E.pauta.vista = "semana"; window.scrollTo(0, 0);
       await desenhar();
       recado(`Peça criada para ${dataAgenda(dia)}. Ela está planejada: nada é publicado sem a aprovação do administrador.`);
     },
