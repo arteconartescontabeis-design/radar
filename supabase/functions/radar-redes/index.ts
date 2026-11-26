@@ -94,7 +94,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.46.0";
+const VERSAO = "0.47.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -868,7 +868,7 @@ async function acionarLembretes(): Promise<{ acionado: boolean; motivo?: string;
 }
 
 async function diagnostico() {
-  const itens: { item: string; ok: boolean; detalhe: string }[] = [];
+  const itens: { item: string; ok: boolean; detalhe: string; metrica?: boolean }[] = [];
   const c = configMeta("instagram");
   itens.push({ item: "Segredos da Meta", ok: !c.faltam.length,
                detalhe: c.faltam.length ? "Faltam: " + c.faltam.join(", ") : "META_PAGE_ID, META_PAGE_TOKEN e META_IG_USER_ID cadastrados" });
@@ -904,7 +904,33 @@ async function diagnostico() {
     itens.push({ item: "Armazenamento das imagens", ok: true,
                  detalhe: `bucket privado "${BUCKET_PAUTA}" (a notícia e a Pauta; a Meta recebe um link de 10 minutos)` });
   } catch (e) { itens.push({ item: "Armazenamento das imagens", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
-  return { itens, tudo_certo: itens.every((i) => i.ok), versao: VERSAO };
+  // v0.47.0: teste SÓ-LEITURA do que o token lê de métricas (seguidores e insights) — para o dashboard e o acompanhamento por
+  // publicação. São informativos: NÃO entram no "tudo_certo" (que mede só a conexão para publicar). Curtidas/comentários usam o
+  // acesso básico; alcance/visualizações/crescimento exigem instagram_manage_insights (IG) e read_insights/pages_read_engagement (FB).
+  const metrica = (item: string, ok: boolean, detalhe: string) => itens.push({ item, ok, detalhe, metrica: true });
+  if (c.ig && c.token) {
+    try {
+      const d = await metaIg("GET", c.ig, { fields: "followers_count,media_count" });
+      metrica("Instagram — seguidores", typeof d?.followers_count === "number",
+        typeof d?.followers_count === "number" ? `${d.followers_count} seguidores · ${d.media_count ?? "?"} publicações` : "o token não devolveu followers_count");
+    } catch (e) { metrica("Instagram — seguidores", false, e instanceof Error ? e.message : "erro"); }
+    try {
+      const d = await metaIg("GET", `${c.ig}/insights`, { metric: "reach", period: "day", metric_type: "total_value" });
+      metrica("Instagram — alcance/visualizações (insights)", Array.isArray(d?.data), Array.isArray(d?.data) ? "liberado" : "o token não devolveu os insights");
+    } catch (e) { metrica("Instagram — alcance/visualizações (insights)", false, (e instanceof Error ? e.message : "erro") + " — pode faltar instagram_manage_insights"); }
+  }
+  if (c.pagina && c.token) {
+    try {
+      const d = await meta("GET", c.pagina, { fields: "followers_count,fan_count" });
+      const n = typeof d?.followers_count === "number" ? d.followers_count : d?.fan_count;
+      metrica("Facebook — seguidores", typeof n === "number", typeof n === "number" ? `${n} seguidores` : "o token não devolveu os seguidores");
+    } catch (e) { metrica("Facebook — seguidores", false, e instanceof Error ? e.message : "erro"); }
+    try {
+      const d = await meta("GET", `${c.pagina}/insights`, { metric: "page_impressions", period: "day" });
+      metrica("Facebook — alcance/impressões (insights)", Array.isArray(d?.data), Array.isArray(d?.data) ? "liberado" : "o token não devolveu os insights");
+    } catch (e) { metrica("Facebook — alcance/impressões (insights)", false, (e instanceof Error ? e.message : "erro") + " — pode faltar read_insights/pages_read_engagement"); }
+  }
+  return { itens, tudo_certo: itens.filter((i) => !i.metrica).every((i) => i.ok), versao: VERSAO };
 }
 
 async function tratar(req: Request): Promise<Response> {
