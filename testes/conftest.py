@@ -180,7 +180,7 @@ def limpo(db):
                   radar_assunto_capturas, radar_assuntos, radar_normas, radar_capturas_versoes,
                   radar_capturas, radar_execucoes, radar_auditoria, radar_ia_uso, radar_informativo_itens,
                   radar_informativos, radar_imagens, radar_divulgacoes, radar_pauta_pecas, radar_pessoas,
-                  radar_videos, radar_video_acessos, radar_lembretes restart identity cascade""")
+                  radar_videos, radar_video_acessos, radar_lembretes, radar_redes_seguidores restart identity cascade""")
     db.execute("update radar_fontes set ultimo_sucesso_em = null, ultima_falha_em = null, "
                "falhas_consecutivas = 0, ultimo_erro = null")
     db.execute("delete from radar_fontes where slug like 'teste-%'")

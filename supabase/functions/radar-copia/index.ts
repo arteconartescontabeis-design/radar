@@ -45,7 +45,7 @@
 // dados. A resposta ao administrador traz os tempos de cada etapa.
 // =====================================================================
 
-const VERSAO = "0.128.0";            // v0.128.0: + radar_metricas na cópia (métricas da conta própria, reservada; v0.125.0); v0.63.0: + radar_fotos_acervo na cópia (o acervo de fotos da Artecon); v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.35.0: + as 3 tabelas do Módulo Respostas Automáticas
+const VERSAO = "0.141.0";            // v0.141.0: + radar_redes_seguidores na cópia (o crescimento de seguidores); v0.128.0: + radar_metricas na cópia (métricas da conta própria, reservada; v0.125.0); v0.63.0: + radar_fotos_acervo na cópia (o acervo de fotos da Artecon); v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.35.0: + as 3 tabelas do Módulo Respostas Automáticas
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -75,7 +75,7 @@ const TABELAS = [
   // v0.125.0: métricas da conta própria (reservada; nenhum dado pessoal, nenhuma chave — vai à cópia como as demais)
   "radar_metricas", "radar_normas", "radar_pauta_pecas", "radar_perfis", "radar_pessoas", "radar_pessoas_termos",
   // v0.57.0: o uso do corretor de polimento (minutos e custo por chamada; nenhuma chave, nenhum dado pessoal)
-  "radar_polimento_uso", "radar_redes_envios",
+  "radar_polimento_uso", "radar_redes_envios", "radar_redes_seguidores",
   // v0.35.0: as 3 do Módulo Respostas Automáticas (gatilhos, registro dos comentários e contas ligadas: sem token nenhum)
   "radar_respostas_contas", "radar_respostas_gatilhos", "radar_respostas_registro",
   // v0.34.0: as 4 da aba Setor (dados públicos do Instagram e a configuração dos setores: vão à cópia como tudo)
