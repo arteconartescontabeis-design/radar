@@ -109,10 +109,11 @@ def test_agenda_cria_a_chave_e_agenda_de_5_em_5_min_sem_a_chave_no_comando(banco
     with conectar(banco_agenda) as c:
         jobs = c.execute("select jobname, schedule, command, active from cron.job order by jobname").fetchall()
     assert [(n, s, a) for n, s, _, a in jobs] == [("radar-redes-agenda", "*/5 * * * *", True), ("radar-redes-agenda-lembretes", "*/15 * * * *", True),
-                                                  ("radar-redes-agenda-limpeza", "41 6 * * *", True), ("radar-redes-agenda-robos", "13 8 * * *", True),
-                                                  ("radar-redes-agenda-site", "*/5 * * * *", True)]   # v0.45.0: + a hora marcada do site
-    comando, lembretes, limpeza, robos, site = (j[2] for j in jobs)                         # v0.29.0: + os lembretes por e-mail
-    assert all(agenda not in c for c in (comando, lembretes, limpeza, robos, site))         # a chave é lida do Vault a cada rodada
+                                                  ("radar-redes-agenda-limpeza", "41 6 * * *", True), ("radar-redes-agenda-metricas", "47 9 * * *", True),
+                                                  ("radar-redes-agenda-robos", "13 8 * * *", True),
+                                                  ("radar-redes-agenda-site", "*/5 * * * *", True)]   # v0.45.0: + a hora marcada do site; v0.141.0: + as métricas
+    comando, lembretes, limpeza, metricas, robos, site = (j[2] for j in jobs)               # v0.29.0: + os lembretes; v0.141.0: + as métricas
+    assert all(agenda not in c for c in (comando, lembretes, limpeza, metricas, robos, site))   # a chave é lida do Vault a cada rodada
     for trecho in (URL, "Bearer " + chave_anon_do_config(), "'x-radar-agenda'", "vault.decrypted_secrets", "radar_redes_agenda",
                    "public.radar_agenda_vencidas(2)", "timeout_milliseconds := 150000", "'acao', 'publicar'"):
         assert trecho in comando, trecho
@@ -330,7 +331,8 @@ def test_agenda_roda_de_novo_sem_duplicar_e_reversao_tira_tudo(banco_agenda, age
     assert r.returncode == 0, r.stderr
     with conectar(banco_agenda) as c:
         assert [n for (n,) in c.execute("select jobname from cron.job order by jobname").fetchall()] == [
-            "radar-redes-agenda", "radar-redes-agenda-lembretes", "radar-redes-agenda-limpeza", "radar-redes-agenda-robos", "radar-redes-agenda-site"]
+            "radar-redes-agenda", "radar-redes-agenda-lembretes", "radar-redes-agenda-limpeza", "radar-redes-agenda-metricas",
+            "radar-redes-agenda-robos", "radar-redes-agenda-site"]
         assert c.execute("select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda'").fetchone()[0] == agenda
         for nome in ("radar-itc", "copia-do-projeto"):                                        # as outras agendas ficam
             c.execute("select cron.schedule(%s, '55 5 * * *', 'select 1')", (nome,))
@@ -377,7 +379,7 @@ def test_as_tres_agendas_rodam_de_novo_sem_tocar_nas_extensoes(tmp_path):
                 antes = estado
         jobs, segredos = dict((n, (s, cmd)) for n, s, cmd in antes[0]), dict(antes[1])
         assert sorted(jobs) == ["radar-itc", "radar-itc-completa", "radar-redes-agenda", "radar-redes-agenda-lembretes", "radar-redes-agenda-limpeza",
-                                "radar-redes-agenda-robos", "radar-redes-agenda-site", "radar-video-limpeza", "radar-video-reserva"]
+                                "radar-redes-agenda-metricas", "radar-redes-agenda-robos", "radar-redes-agenda-site", "radar-video-limpeza", "radar-video-reserva"]
         assert sorted(segredos) == ["radar_itc_agenda", "radar_redes_agenda", "radar_video_agenda", "radar_video_robo"]
         # a agenda da ITC (sem teste antes): 02h55 de Brasília, o complemento só com boletim para depois, a chave lida do Vault na hora
         assert jobs["radar-itc"][0] == "55 5 * * *" and jobs["radar-itc-completa"][0] == "10,25 6 * * *"

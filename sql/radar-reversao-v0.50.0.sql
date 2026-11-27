@@ -141,6 +141,7 @@ end $$;
 
 drop table if exists
   public.radar_metricas,         -- v0.125.0 (o engajamento dos posts; sai antes de radar_redes_envios, que ela referencia)
+  public.radar_redes_seguidores, -- v0.141.0 (o crescimento de seguidores por canal/dia)
   public.radar_fotos_acervo,     -- v0.63.0 (o acervo de fotos da Artecon; sai antes de radar_imagens e de radar_papel)
   public.radar_venda_roteiros,   -- v0.60.0 (a biblioteca dos vídeos de venda)
   public.radar_polimento_uso,    -- v0.57.0 (corretor de polimento)
@@ -477,6 +478,8 @@ drop function if exists public.radar_horarios_artecon(int);
 drop function if exists public.radar_horarios_resumo(text, int);
 drop function if exists public.radar_metricas_gravar(jsonb);
 drop view if exists public.radar_v_horarios;
+-- v0.141.0: o crescimento de seguidores (a tabela radar_redes_seguidores sai mais abaixo, com as demais)
+drop function if exists public.radar_rede_seguidores_gravar(text, integer, integer);
 
 commit;
 

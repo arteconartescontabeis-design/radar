@@ -108,6 +108,15 @@ begin
       headers := jsonb_build_object('Content-Type', 'application/json', %L, %L,
                    'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda')),
       timeout_milliseconds := 60000) where public.radar_site_agendada_devida()$c$, v_url, v_cab_nome, v_cab_valor));
+  -- v0.141.0: as MÉTRICAS das redes, uma vez por dia (06:47 de Brasília = 09:47 UTC), com a mesma chave da agenda. SÓ-LEITURA
+  -- na Meta: grava o crescimento de seguidores (radar_redes_seguidores) e o engajamento de cada publicação (radar_metricas).
+  -- O horário é cedo e único no dia para o engajamento do dia anterior já ter assentado; o laço percorre os publicados dos
+  -- últimos 120 dias, por isso o tempo é generoso.
+  perform cron.schedule('radar-redes-agenda-metricas', '47 9 * * *', format($c$select net.http_post(url := %L,
+      body := '{"acao": "metricas"}'::jsonb,
+      headers := jsonb_build_object('Content-Type', 'application/json', %L, %L,
+                   'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda')),
+      timeout_milliseconds := 150000)$c$, v_url, v_cab_nome, v_cab_valor));
   -- cron.job_run_details não é limpo sozinho (a página do Supabase não fala disso): guarda 7 dias
   perform cron.schedule('radar-redes-agenda-limpeza', '41 6 * * *',
     $c$delete from cron.job_run_details where end_time < now() - interval '7 days'

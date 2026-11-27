@@ -11306,10 +11306,12 @@ create table if not exists public.radar_metricas (
   comentarios       integer     not null default 0 check (comentarios between 0 and 2000000000),
   salvos            integer     not null default 0 check (salvos between 0 and 2000000000),
   compartilhamentos integer     not null default 0 check (compartilhamentos between 0 and 2000000000),
+  visualizacoes     integer     not null default 0 check (visualizacoes between 0 and 2000000000),   -- v0.141.0: reels/vídeos
   engajamento       integer     not null default 0 check (engajamento between 0 and 2000000000),
   unique (canal, post_id)
 );
 create index if not exists radar_metricas_publicado_idx on public.radar_metricas (publicado_em desc);
+create index if not exists radar_metricas_envio_idx on public.radar_metricas (envio_id);
 
 alter table public.radar_metricas enable row level security;
 revoke all on public.radar_metricas from public, anon, authenticated, service_role;
@@ -11334,7 +11336,7 @@ begin
       continue;                                                    -- item inválido é pulado, nunca derruba o lote
     end if;
     insert into public.radar_metricas
-      (envio_id, canal, post_id, publicado_em, coletado_em, alcance, curtidas, comentarios, salvos, compartilhamentos, engajamento)
+      (envio_id, canal, post_id, publicado_em, coletado_em, alcance, curtidas, comentarios, salvos, compartilhamentos, visualizacoes, engajamento)
     values (
       case when jsonb_typeof(x->'envio_id') = 'number' then (x->>'envio_id')::bigint end,
       x->>'canal', left(x->>'post_id', 100), (x->>'publicado_em')::timestamptz, now(),
@@ -11343,18 +11345,50 @@ begin
       least(2000000000, greatest(0, coalesce((x->>'comentarios')::int, 0))),
       least(2000000000, greatest(0, coalesce((x->>'salvos')::int, 0))),
       least(2000000000, greatest(0, coalesce((x->>'compartilhamentos')::int, 0))),
+      least(2000000000, greatest(0, coalesce((x->>'visualizacoes')::int, 0))),
       least(2000000000, greatest(0, coalesce((x->>'engajamento')::int, 0))))
     on conflict (canal, post_id) do update set
       envio_id = coalesce(excluded.envio_id, public.radar_metricas.envio_id),
       publicado_em = excluded.publicado_em, coletado_em = now(),
       alcance = excluded.alcance, curtidas = excluded.curtidas, comentarios = excluded.comentarios,
-      salvos = excluded.salvos, compartilhamentos = excluded.compartilhamentos, engajamento = excluded.engajamento;
+      salvos = excluded.salvos, compartilhamentos = excluded.compartilhamentos,
+      visualizacoes = excluded.visualizacoes, engajamento = excluded.engajamento;
     v_n := v_n + 1;
   end loop;
   return v_n;
 end $$;
 revoke all on function public.radar_metricas_gravar(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.radar_metricas_gravar(jsonb) to service_role;
+
+-- v0.141.0: CRESCIMENTO DE SEGUIDORES — um registro por canal e por dia (o coletor grava; a equipe lê). Alimenta o gráfico
+-- de crescimento no painel. Mesmo padrão da radar_metricas: robô escreve pela função security definer, equipe só lê.
+create table if not exists public.radar_redes_seguidores (
+  canal         text        not null check (canal in ('instagram','facebook')),
+  dia           date        not null,
+  seguidores    integer     not null check (seguidores >= 0),
+  publicacoes   integer     check (publicacoes >= 0),
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  primary key (canal, dia)
+);
+alter table public.radar_redes_seguidores enable row level security;
+revoke all on public.radar_redes_seguidores from public, anon, authenticated, service_role;
+grant select on public.radar_redes_seguidores to authenticated;
+drop policy if exists radar_redes_seguidores_sel on public.radar_redes_seguidores;
+create policy radar_redes_seguidores_sel on public.radar_redes_seguidores for select to authenticated
+  using ((select public.radar_papel()) is not null);
+
+create or replace function public.radar_rede_seguidores_gravar(p_canal text, p_seguidores integer, p_publicacoes integer default null)
+returns void language sql security definer set search_path = public as $$
+  insert into public.radar_redes_seguidores (canal, dia, seguidores, publicacoes)
+  values (p_canal, (now() at time zone 'America/Sao_Paulo')::date, p_seguidores, p_publicacoes)
+  on conflict (canal, dia) do update
+    set seguidores = excluded.seguidores,
+        publicacoes = coalesce(excluded.publicacoes, public.radar_redes_seguidores.publicacoes),
+        atualizado_em = now();
+$$;
+revoke all on function public.radar_rede_seguidores_gravar(text, integer, integer) from public, anon, authenticated, service_role;
+grant execute on function public.radar_rede_seguidores_gravar(text, integer, integer) to service_role;
 
 drop view if exists public.radar_v_horarios;
 create view public.radar_v_horarios

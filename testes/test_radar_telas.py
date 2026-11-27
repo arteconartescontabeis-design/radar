@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.140.0"
+    assert pagina.inner_text(".versao") == "v0.141.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.140.0" and data == "26/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.141.0" and data == "27/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -8344,6 +8344,48 @@ def test_painel_horarios_sem_dados_convida_a_ligar_a_conta_v127(pagina, limpo):
     pagina.wait_for_selector("text=Painel do dia")
     txt = pagina.inner_text("#dash-horarios")
     assert "Ainda não há publicações da conta da Artecon" in txt and "Setor" in txt
+
+
+def test_painel_mostra_o_crescimento_de_seguidores_v141(pagina, limpo):
+    """v0.141.0: o Painel ganhou "Crescimento de seguidores" — o total atual de cada rede e a variação no período, a partir da
+    leitura diária (radar_redes_seguidores)."""
+    limpo.execute("""insert into radar_redes_seguidores (canal, dia, seguidores, publicacoes) values
+        ('instagram','2026-11-25',1460,980),('instagram','2026-11-27',1476,984),('facebook','2026-11-27',578,null)""")
+    entrar(pagina)
+    pagina.wait_for_selector("#dash-seguidores")
+    txt = pagina.inner_text("#dash-seguidores")
+    assert "Crescimento de seguidores" in txt
+    assert "1.476" in txt and "578" in txt                                        # o total atual de cada rede (pt-BR: 1.476)
+    assert "+16" in txt                                                           # 1476 − 1460 no período
+    assert pagina.locator("#dash-seguidores .seg-spark polyline").count() == 1    # a linha do tempo do Instagram (2 leituras)
+    pagina.screenshot(path=str(FOTOS / "77-painel-seguidores.png"), full_page=True)
+
+
+def test_painel_seguidores_sem_dados_nao_quebra_v141(pagina, limpo):
+    """v0.141.0: sem leitura ainda, o quadro mostra o convite e o Painel não quebra."""
+    limpo.execute("delete from radar_redes_seguidores")
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("#dash-seguidores")
+    assert "Ainda não há leitura de seguidores" in pagina.inner_text("#dash-seguidores")
+
+
+def test_publicacoes_mostram_as_metricas_por_publicacao_v141(pagina, limpo):
+    """v0.141.0: cada publicação que já saiu nas redes mostra, embaixo, "N visualizações · N curtidas · N comentários"
+    (coletadas pelo robô diário em radar_metricas)."""
+    pid = peca_db(limpo, "2026-11-20", "quem_cuida", "reel", assunto="Reel com métricas")
+    mudar_situacao(limpo, pid, "aprovada", aprovado_modo="manual")
+    envio = limpo.execute("""insert into radar_redes_envios (peca_id, canal, legenda, conteudo_lido_em, situacao, agendado_para, publicado_em, post_id, url)
+        values (%s,'instagram','Legenda da peça de teste.',now(),'publicado','2026-11-20 10:00+00','2026-11-20 10:00+00','ig-9','https://www.instagram.com/p/x/') returning id""", (pid,)).fetchone()[0]
+    limpo.execute("""insert into radar_metricas (envio_id, canal, post_id, publicado_em, visualizacoes, curtidas, comentarios, alcance, salvos, compartilhamentos, engajamento)
+        values (%s,'instagram','ig-9','2026-11-20 10:00+00',1200,40,3,2000,15,6,64)""", (envio,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-canais")
+    cel = pagina.locator("#tab-canais tr", has_text="Reel com métricas").locator("td[data-canal=instagram]")
+    t = cel.inner_text()
+    assert "1.200 visualizações" in t and "40 curtidas" in t and "3 comentários" in t
+    pagina.screenshot(path=str(FOTOS / "78-publicacoes-metricas.png"), full_page=True)
 
 
 def test_selo_com_motivo_longo_cabe_no_celular(pagina, pauta):

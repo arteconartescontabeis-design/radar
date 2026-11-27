@@ -115,6 +115,27 @@ class Ponte(BaseHTTPRequestHandler):
                 return self._responder(200, {"success": True})
             return self._responder(400, {"error": {"code": 100, "message": "Unsupported delete request."}})
         if self.command == "GET":
+            # v0.141.0: leituras de métricas (seguidores + engajamento por publicação) — vêm antes das demais rotas GET
+            f = params.get("fields", "")
+            if caminho == "ig-1" and "followers_count" in f:
+                return self._responder(200, {"followers_count": 1476, "media_count": 984})
+            if caminho == "pagina-1" and "followers_count" in f:
+                return self._responder(200, {"followers_count": 578, "fan_count": 570})
+            if caminho == "midia-1" and "like_count" in f:
+                return self._responder(200, {"like_count": 120, "comments_count": 8})
+            if caminho == "midia-1/insights":
+                return self._responder(200, {"data": [
+                    {"name": "reach", "total_value": {"value": 2000}},
+                    {"name": "saved", "total_value": {"value": 15}},
+                    {"name": "shares", "total_value": {"value": 6}},
+                    {"name": "views", "total_value": {"value": 3500}}]})
+            if caminho == "pagina-1_post-9" and "likes.summary" in f:
+                return self._responder(200, {"likes": {"summary": {"total_count": 40}},
+                                             "comments": {"summary": {"total_count": 3}}, "shares": {"count": 2}})
+            if caminho == "pagina-1_post-9/insights":
+                return self._responder(200, {"data": [
+                    {"name": "post_impressions_unique", "values": [{"value": 900}]},
+                    {"name": "post_video_views", "values": [{"value": 1200}]}]})
             if caminho == "cont-1":
                 return self._responder(200, {"status_code": ESTADO["status_ig"].pop(0) if len(ESTADO["status_ig"]) > 1 else ESTADO["status_ig"][0]})
             if caminho.startswith("cont-f") or caminho == "cont-car":        # v0.42.0: os contêineres do carrossel ficam prontos na hora
@@ -1148,7 +1169,7 @@ def test_agenda_teste_responde_sem_publicar(peca):
     db, c1 = peca
     ig = agendada(db)["instagram"]                                                  # há peça vencida: o teste não a toca
     for porta in (PORTA_FUNCAO, PORTA_SEM_META):                                    # nem precisa da Meta configurada
-        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.47.0"})
+        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.49.0"})
     assert pedir({"acao": "agenda_teste"}) == (403, {"message": "Só a agenda do banco usa o teste da agenda."})
     assert pedir({"acao": "agenda_teste"}, uid=EDITOR)[0] == 403
     assert pedir({"acao": "agenda_teste"}, cab=ROBO)[0] == 403
@@ -1189,6 +1210,37 @@ def test_diagnostico_confere_o_armazenamento_privado_da_pauta(peca):
     assert status == 502 and "está público" in r["message"] and ESTADO["storage"] == [] and ESTADO["assinaturas"] == []
     assert not [m for m in ESTADO["meta"] if m[1] in ("ig-1/media", "ig-1/media_publish")]
     assert situacao_envio(db, ig)[0] == "erro"                                      # contado e avisado; "Tentar de novo" depois de arrumar
+
+
+def test_metricas_grava_seguidores_e_engajamento_por_publicacao(peca):
+    """v0.141.0: a agenda (1x/dia) busca na Meta — SÓ-LEITURA — o nº de seguidores de cada canal (crescimento) e o engajamento
+    de cada publicação (curtidas, comentários, visualizações, alcance, salvos, compartilhamentos), e grava pelo banco
+    (radar_rede_seguidores_gravar e radar_metricas_gravar, em lote). Só a agenda do banco aciona."""
+    db, c1 = peca
+    ig = autorizar(db, c1, "instagram")
+    fb = autorizar(db, c1, "facebook")
+    db.execute("update radar_redes_envios set situacao='publicado', post_id='midia-1', publicado_em=now() where id=%s", (ig,))
+    db.execute("update radar_redes_envios set situacao='publicado', post_id='pagina-1_post-9', publicado_em=now() where id=%s", (fb,))
+    db.commit()
+    ESTADO["meta"] = []
+    # só a agenda do banco busca as métricas (o administrador, o editor e o robô do site não)
+    assert pedir({"acao": "metricas"})[0] == 403
+    assert pedir({"acao": "metricas"}, uid=EDITOR)[0] == 403
+    assert pedir({"acao": "metricas"}, cab=ROBO)[0] == 403
+    status, r = pedir({"acao": "metricas"}, cab=AGENDA)
+    assert (status, r) == (200, {"seguidores": 2, "publicacoes": 2, "falhas": 0, "versao": "0.49.0"}), r
+    # crescimento de seguidores: um registro por canal, no dia de hoje
+    hoje = "(now() at time zone 'America/Sao_Paulo')::date"
+    seg = dict(db.execute(f"select canal, seguidores from radar_redes_seguidores where dia = {hoje}").fetchall())
+    assert seg == {"instagram": 1476, "facebook": 578}
+    assert db.execute(f"select publicacoes from radar_redes_seguidores where canal='instagram' and dia={hoje}").fetchone()[0] == 984
+    # engajamento por publicação (engajamento = curtidas + comentários + salvos + compartilhamentos)
+    assert db.execute("""select curtidas, comentarios, salvos, compartilhamentos, visualizacoes, alcance, engajamento, envio_id
+                         from radar_metricas where canal='instagram' and post_id='midia-1'""").fetchone() == (120, 8, 15, 6, 3500, 2000, 149, ig)
+    assert db.execute("""select curtidas, comentarios, salvos, compartilhamentos, visualizacoes, alcance, engajamento, envio_id
+                         from radar_metricas where canal='facebook' and post_id='pagina-1_post-9'""").fetchone() == (40, 3, 0, 2, 1200, 900, 45, fb)
+    # SÓ-LEITURA na Meta: nenhuma publicação nem exclusão
+    assert not [m for m in ESTADO["meta"] if m[0] in ("POST", "DELETE")]
 
 
 def test_funcao_nova_com_banco_antigo_publica_noticia(redes):

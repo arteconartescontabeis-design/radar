@@ -385,6 +385,13 @@ details.nova-pessoa{margin:0 0 16px} details.nova-pessoa summary{margin-bottom:8
 .hm-cel{height:16px;border-radius:2px;background:transparent} .hm-cel.vazio{background:var(--linha);opacity:.2} .hm-cel.g-faixa:hover{outline:2px solid var(--marinho)}
 .hm-rot{font-size:.72rem;color:var(--marinho);white-space:nowrap} .hm-hora{font-size:.6rem;color:#5A636D;text-align:center;overflow:visible;white-space:nowrap}
 .hm-top{margin:4px 0 0;padding-left:18px} .hm-top li{margin:2px 0}
+/* v0.141.0: crescimento de seguidores (dashboard) e as métricas por publicação */
+.seg-cartoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:6px}
+.seg-cartao{border:1px solid var(--linha);border-radius:10px;padding:12px 14px}
+.seg-cartao h3{margin:0 0 4px;font-size:1rem} .seg-num{font-size:1.5rem;font-weight:700;color:var(--marinho)} .seg-num .sub{font-size:.8rem;font-weight:400}
+.seg-delta{font-size:.84rem;margin-top:2px} .seg-delta.sobe{color:#1E7A46} .seg-delta.cai{color:#B4232A}
+.seg-spark{display:block;width:100%;height:34px;margin-top:8px} .seg-spark polyline{fill:none;stroke:var(--dourado,#DCA33A);stroke-width:1.6;vector-effect:non-scaling-stroke}
+.metricas-pub{color:#5A636D}
 .dash-tip{position:fixed;pointer-events:none;background:var(--marinho);color:#fff;border-radius:8px;padding:6px 10px;font-size:.78rem;line-height:1.3;transform:translate(-50%,calc(-100% - 10px));white-space:nowrap;max-width:92vw;box-shadow:0 4px 14px rgba(1,31,72,.25);z-index:50}
 .dash-tip[hidden]{display:none}
 /* v0.48.0 (melhoria A): a linha de datas do seletor "Período" */
@@ -494,21 +501,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.140.0"></script>
-<script src="radar-video.js?v=0.140.0"></script>
-<script src="radar-setor.js?v=0.140.0"></script>
-<script src="radar-respostas.js?v=0.140.0"></script>
+<script src="radar-pauta.js?v=0.141.0"></script>
+<script src="radar-video.js?v=0.141.0"></script>
+<script src="radar-setor.js?v=0.141.0"></script>
+<script src="radar-respostas.js?v=0.141.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.140.0";
+const VERSAO = "0.141.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.141.0", "27/11/2026", [
+    "<b>Acompanhamento de crescimento: seguidores no Painel e curtidas/visualizações nas Publicações</b>. O Radar passa a ler sozinho, <b>uma vez por dia</b>, direto da Meta (só leitura): o <b>número de seguidores</b> do Instagram e do Facebook e o <b>engajamento de cada publicação</b> (curtidas, comentários, visualizações, alcance, salvamentos e compartilhamentos). No <b>Painel do dia</b>, um quadro novo <b>“Crescimento de seguidores”</b> mostra o total atual de cada rede e a variação no período, com uma linha do tempo. Na aba <b>Publicações</b>, cada peça/notícia que já saiu nas redes mostra embaixo, na coluna do canal, <b>“N visualizações · N curtidas · N comentários”</b>. Com os mesmos dados, o Painel ganha de brinde os <b>melhores horários por engajamento</b> (as publicações próprias agora alimentam esse quadro).",
+    "Administrador: mudança na TELA, no BANCO e na função radar-redes. 1) No Supabase (SQL Editor) rode o <b>sql/radar-redes-metricas-v0.141.0.sql</b> (tabelas radar_redes_seguidores e radar_metricas, com visualizações; nada é apagado de dados reais; pode rodar de novo) e depois o <b>sql/radar-redes-agenda.sql</b> (agenda a leitura diária das métricas). 2) Faça o Deploy da <b>radar-redes</b> (cole de novo o supabase/functions/radar-redes/index.ts — v0.49.0). 3) Publique o index.html com os demais .js e aperte Ctrl+F5. Os quadros aparecem com dados a partir da primeira leitura automática (no dia seguinte)."]],
   ["0.140.0", "26/11/2026", [
     "<b>Botão “+ Nova peça (Reel)” no topo da Pauta</b>. Ao lado de “✨ Gerar novas pautas com IA”, o administrador agora tem um atalho <b>+ Nova peça (Reel)</b> que abre o formulário com um <b>seletor de dia</b> (padrão hoje) — sem depender do “+ Nova peça” de cada dia. Você escolhe o dia e escreve o assunto; a peça <b>já nasce como reel</b> e abre em seguida para você pôr as informações e clicar em “Gerar com IA” (o roteiro e as legendas, como já era). Resolve também o caso de criar um reel para <b>hoje</b> quando o dia já tem peça.",
     "Administrador: mudança só de TELA. Publique o index.html com os demais .js e aperte Ctrl+F5. Nada muda no banco nem nas funções Edge."]],
@@ -1854,6 +1864,38 @@ function blocoHorarios(d){
       ${fmt.map(g => `<div class="dash-barh"><span class="dash-bar-rot">${h(ROTULO_FORMATO_SETOR[g.formato] || g.formato)}</span><span class="dash-barh-fill" style="width:${Math.round((Number(g.engajamento_medio) || 0) / maxF * 100)}%" title="${h(pct(g.engajamento_medio))}"></span><span class="dash-bar-val">${pct(g.engajamento_medio)} · ${g.posts}</span></div>`).join("")}` : ""}</div>`;
 }
 
+// v0.141.0: o CRESCIMENTO de seguidores no dashboard. Vem de radar_redes_seguidores (o coletor lê a Meta 1x/dia e grava um registro
+// por canal/dia). Um cartão por rede com o total atual, a variação no período e uma linha do tempo simples (SVG). Sem leitura ainda,
+// convida a aguardar a primeira coleta. Tolera banco antigo (tabela ausente): não mostra nada.
+function blocoSeguidores(seg){
+  if(!Array.isArray(seg)) return "";
+  const mi = n => Number(n || 0).toLocaleString("pt-BR");
+  const CANAIS = [["instagram", "Instagram"], ["facebook", "Facebook"]];
+  const por = {}; for(const r of seg){ (por[r.canal] ||= []).push(r); }
+  if(!CANAIS.some(([k]) => (por[k] || []).length)){
+    return `<div class="painel" id="dash-seguidores"><h2>Crescimento de seguidores</h2>
+      <p class="sub">Ainda não há leitura de seguidores. ${ehAdmin()
+        ? "O Radar lê sozinho uma vez por dia (Instagram e Facebook); o quadro aparece a partir da primeira leitura."
+        : "O quadro aparece a partir da primeira leitura automática."}</p></div>`;
+  }
+  const cartao = ([canal, rotulo]) => {
+    const l = por[canal] || [];
+    if(!l.length) return `<div class="seg-cartao"><h3>${rotulo}</h3><p class="sub">Sem leitura ainda.</p></div>`;
+    const atual = Number(l[l.length - 1].seguidores), inicio = Number(l[0].seguidores), delta = atual - inicio;
+    const vals = l.map(x => Number(x.seguidores)), min = Math.min(...vals), max = Math.max(...vals), amp = Math.max(1, max - min), n = vals.length;
+    const px = i => (n === 1 ? 50 : (i / (n - 1)) * 100).toFixed(2), py = v => (30 - (v - min) / amp * 28).toFixed(2);
+    const pts = vals.map((v, i) => `${px(i)},${py(v)}`).join(" "), desde = data(l[0].dia);
+    return `<div class="seg-cartao"><h3>${rotulo}</h3>
+      <div class="seg-num">${mi(atual)} <span class="sub">seguidores</span></div>
+      ${n > 1 ? `<div class="seg-delta ${delta >= 0 ? "sobe" : "cai"}">${delta >= 0 ? "▲ +" : "▼ "}${mi(delta)} desde ${desde}</div>
+        <svg class="seg-spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}"></polyline></svg>`
+      : `<div class="sub">Primeira leitura em ${desde}. A variação aparece na próxima.</div>`}</div>`;
+  };
+  return `<div class="painel" id="dash-seguidores"><h2>Crescimento de seguidores</h2>
+    <p class="sub">O total de seguidores de cada rede, lido automaticamente uma vez por dia. ▲ é a variação no período mostrado.</p>
+    <div class="seg-cartoes">${CANAIS.map(cartao).join("")}</div></div>`;
+}
+
 /* ----------------------------------------------------------------- telas */
 const TELAS = {
   async painel(){
@@ -1865,9 +1907,10 @@ const TELAS = {
     const proj = temPauta ? await lerCronograma(segundaDe(hoje), hoje).catch(() => null) : null;
     // v0.47.0: os dados dos gráficos (sem o banco novo, a função não existe: o Painel abre sem os gráficos). A cota do corretor é só
     // do editor/administrador; o leitor vê o resto.
-    let graf = null, cota = null, polim = null, horarios = null;
+    let graf = null, cota = null, polim = null, horarios = null, seg = null;
     try{ graf = await rpc("radar_painel_graficos", {p_hoje: hoje || null}); }catch(e){ graf = null; }
     try{ horarios = await rpc("radar_horarios_artecon", {p_dias: 180}); }catch(e){ horarios = null; }   // v0.127.0: melhores horários da Artecon
+    try{ seg = await ler("radar_redes_seguidores", {select:"canal,dia,seguidores,publicacoes", order:"dia", limit:"400"}); }catch(e){ seg = null; }   // v0.141.0: crescimento de seguidores
     if(podeEditar()){ try{ cota = await rpc("radar_video_cota"); }catch(e){ cota = null; }
                       try{ polim = await rpc("radar_polimento_cota"); }catch(e){ polim = null; } }
     const fontes = await ler("radar_v_saude_fontes", {select:"*", ativo:"eq.true", saude:"neq.ok", order:"slug"});
@@ -1889,6 +1932,7 @@ const TELAS = {
         ? " (a lista inteira fica em Configurações → Agenda de obrigações)" : ""}</p>` : ""}</div>` : "";
     return `<h1>Painel do dia</h1>${parada}
       ${blocoDashboard(hoje, proj, graf, cota, polim)}
+      ${blocoSeguidores(seg)}
       ${blocoHorarios(horarios)}
       ${prorrogacao}
       <div class="cartoes">
@@ -2118,7 +2162,7 @@ const TELAS = {
       ? `<br><button class="btn peq" type="button" data-acao="publicar-faltam-de" data-assunto="${c.assunto_id}" data-id="${c.id}">Publicar</button>` : "";
     const naRede = (c, k) => { const r = [...(c.radar_redes_envios || [])].filter(x => x.canal === k && x.situacao !== "cancelado").sort((x, y) => y.id - x.id)[0];
       if(!r) return `<span class="canal falta">Falta</span>` + publicarRedeBtn(c);
-      if(r.situacao === "publicado") return `<span class="canal ok">✓ ${data(r.publicado_em)}</span>${r.url ? `<br>${linkFonte(r.url, "ver ↗")}` : ""}${btnExcluir(c, k, r.id)}`;
+      if(r.situacao === "publicado") return `<span class="canal ok">✓ ${data(r.publicado_em)}</span>${r.url ? `<br>${linkFonte(r.url, "ver ↗")}` : ""}${seloMetricas(r.id)}${btnExcluir(c, k, r.id)}`;
       if(r.situacao === "excluido") return `<span class="canal breve">Excluída em ${data(r.excluido_em)}</span>` + publicarRedeBtn(c);
       if(r.situacao === "aguardando_site") return `<span class="canal espera">Vai junto com o site</span>`;
       return r.situacao === "dispensado" ? `<span class="canal breve">Não vai</span>` : r.situacao === "erro" ? `<span class="canal erro">Não concluída</span>`
@@ -2128,13 +2172,24 @@ const TELAS = {
     // v0.111.0: peças da Pauta no envio (agendadas ou publicadas); "aprovada" sem canal nem publicação manual não entra
     const FORMATO_PECA = {reel:"Reel", carrossel:"Carrossel", carrossel_fotos:"Carrossel de fotos", foto:"Foto", story:"Story", nenhum:"—"};
     const pecasEnvio = (pecasRaw || []).filter(p => p.publicado_manual_em || (p.radar_redes_envios || []).some(e => e.situacao !== "cancelado"));
+    // v0.141.0: as métricas de cada publicação (visualizações, curtidas, comentários) — lidas do coletor diário (radar_metricas) e
+    // mostradas na linha do canal onde a publicação saiu. Sem coletor ainda (ou banco antigo): nenhuma métrica, a tela não muda.
+    const idsEnvioPub = [...new Set([...lista, ...pecasEnvio].flatMap(c => (c.radar_redes_envios || []).filter(e => e.situacao === "publicado").map(e => e.id)))];
+    const metricasPub = {};
+    if(idsEnvioPub.length){ try{ for(const m of await ler("radar_metricas", {select:"envio_id,visualizacoes,curtidas,comentarios", envio_id:"in.(" + idsEnvioPub.join(",") + ")"})) if(m.envio_id != null) metricasPub[m.envio_id] = m; }catch(e){} }
+    const mi = n => Number(n || 0).toLocaleString("pt-BR");
+    const seloMetricas = id => { const m = metricasPub[id]; if(!m) return ""; const ps = [];
+      if(Number(m.visualizacoes) > 0) ps.push(`${mi(m.visualizacoes)} visualizações`);
+      ps.push(`${mi(m.curtidas)} curtidas`);
+      if(Number(m.comentarios) > 0) ps.push(`${mi(m.comentarios)} comentários`);
+      return `<br><span class="sub metricas-pub">${ps.join(" · ")}</span>`; };
     const pecaNoCanal = (p, k) => {
       const manual = k === "instagram" ? p.link_instagram : p.link_facebook;
       const r = [...(p.radar_redes_envios || [])].filter(x => x.canal === k && x.situacao !== "cancelado").sort((x, y) => y.id - x.id)[0];
       if(!r) return manual ? `<span class="canal ok">✓ à mão</span><br>${linkFonte(manual, "ver ↗")}` : `<span class="canal falta">—</span>`;
       // v0.115.0: a peça publicada também tem o botão Excluir (sai da rede pela Meta; a peça continua aprovada), como o conteúdo
       const btnExcluirPeca = adm ? ` <button class="btn peq perigo" type="button" data-acao="peca-excluir" data-envio="${r.id}" data-canal="${k}">Excluir</button>` : "";
-      if(r.situacao === "publicado") return `<span class="canal ok">✓ ${data(r.publicado_em)}</span>${r.url ? `<br>${linkFonte(r.url, "ver ↗")}` : ""}${btnExcluirPeca}`;
+      if(r.situacao === "publicado") return `<span class="canal ok">✓ ${data(r.publicado_em)}</span>${r.url ? `<br>${linkFonte(r.url, "ver ↗")}` : ""}${seloMetricas(r.id)}${btnExcluirPeca}`;
       if(r.situacao === "excluido") return `<span class="canal breve">Excluída${r.excluido_em ? " em " + data(r.excluido_em) : ""}</span>`;
       if(r.situacao === "erro") return `<span class="canal erro">Não saiu</span>${r.erro ? `<br><span class="sub">${h(r.erro)}</span>` : ""}`;
       if(r.situacao === "enviando") return `<span class="canal espera">Publicando</span>`;

@@ -94,7 +94,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.47.0";
+const VERSAO = "0.49.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -933,6 +933,84 @@ async function diagnostico() {
   return { itens, tudo_certo: itens.filter((i) => !i.metrica).every((i) => i.ok), versao: VERSAO };
 }
 
+// v0.48.0/v0.141.0: robô diário de métricas das redes. SÓ-LEITURA na Meta; grava pelas funções security definer do banco:
+// radar_rede_seguidores_gravar (o crescimento de seguidores, um registro por canal/dia) e radar_metricas_gravar (o
+// engajamento de cada publicação, gravado DE UMA VEZ em lote na radar_metricas). Tolera falha por métrica (uma métrica que
+// não vale para o tipo de mídia não derruba as outras). Acionado só pela agenda do banco (1x por dia).
+const numMeta = (x: unknown): number | null => { const n = Number(x); return Number.isFinite(n) ? Math.round(n) : null; };
+const insightMeta = (d: any, nome: string): number | null => {
+  const it = (d?.data ?? []).find((m: any) => m?.name === nome);
+  if (!it) return null;
+  return numMeta(it.total_value?.value ?? it.values?.[it.values.length - 1]?.value);
+};
+async function gravarSeguidores(canal: string, seguidores: number, publicacoes: number | null): Promise<void> {
+  await banco(comoServico(), "POST", "rpc/radar_rede_seguidores_gravar",
+    { p_canal: canal, p_seguidores: seguidores, p_publicacoes: publicacoes });
+}
+// as chaves batem com o que a radar_metricas_gravar lê de cada item do lote (curtidas, comentarios, salvos, ...)
+async function metricasDaMidiaIg(media: string): Promise<Record<string, number | null>> {
+  const o: Record<string, number | null> = {};
+  try { const d = await metaIg("GET", media, { fields: "like_count,comments_count" }); o.curtidas = numMeta(d?.like_count); o.comentarios = numMeta(d?.comments_count); } catch { /* sem o básico */ }
+  try {
+    const d = await metaIg("GET", `${media}/insights`, { metric: "reach,saved,shares,views" });
+    o.alcance = insightMeta(d, "reach"); o.salvos = insightMeta(d, "saved");
+    o.compartilhamentos = insightMeta(d, "shares"); o.visualizacoes = insightMeta(d, "views");
+  } catch { /* algumas métricas não valem para o tipo de mídia */ }
+  return o;
+}
+async function metricasDoPostFb(post: string): Promise<Record<string, number | null>> {
+  const o: Record<string, number | null> = {};
+  try {
+    const d = await meta("GET", post, { fields: "likes.summary(true).limit(0),comments.summary(true).limit(0),shares" });
+    o.curtidas = numMeta(d?.likes?.summary?.total_count); o.comentarios = numMeta(d?.comments?.summary?.total_count);
+    o.compartilhamentos = numMeta(d?.shares?.count);
+  } catch { /* sem o básico */ }
+  try {
+    const d = await meta("GET", `${post}/insights`, { metric: "post_impressions_unique,post_video_views" });
+    o.alcance = insightMeta(d, "post_impressions_unique"); o.visualizacoes = insightMeta(d, "post_video_views");
+  } catch { /* o post pode não ter insights (ex.: alcance pequeno ou tipo sem vídeo) */ }
+  return o;
+}
+async function metricas(): Promise<any> {
+  const c = configMeta("instagram");
+  const r = { seguidores: 0, publicacoes: 0, falhas: 0 };
+  if (c.ig && c.token) {
+    try {
+      const d = await metaIg("GET", c.ig, { fields: "followers_count,media_count" });
+      const n = numMeta(d?.followers_count);
+      if (n !== null) { await gravarSeguidores("instagram", n, numMeta(d?.media_count)); r.seguidores++; } else r.falhas++;
+    } catch { r.falhas++; }
+  }
+  if (c.pagina && c.token) {
+    try {
+      const d = await meta("GET", c.pagina, { fields: "followers_count,fan_count" });
+      const n = numMeta(d?.followers_count ?? d?.fan_count);
+      if (n !== null) { await gravarSeguidores("facebook", n, null); r.seguidores++; } else r.falhas++;
+    } catch { r.falhas++; }
+  }
+  const desde = new Date(Date.now() - 120 * 86_400_000).toISOString();     // os publicados dos últimos 120 dias
+  let envios: any[] = [];
+  try {
+    envios = await banco(comoServico(), "GET",
+      `radar_redes_envios?select=id,canal,post_id,publicado_em&situacao=eq.publicado&post_id=not.is.null&publicado_em=gte.${encodeURIComponent(desde)}&order=publicado_em.desc&limit=200`);
+  } catch { /* sem envios para ler */ }
+  const itens: any[] = [];
+  for (const e of Array.isArray(envios) ? envios : []) {
+    try {
+      const m = e.canal === "instagram" ? await metricasDaMidiaIg(String(e.post_id)) : await metricasDoPostFb(String(e.post_id));
+      if (Object.values(m).some((v) => v !== null)) {
+        const eng = (m.curtidas ?? 0) + (m.comentarios ?? 0) + (m.salvos ?? 0) + (m.compartilhamentos ?? 0);
+        itens.push({ envio_id: e.id, canal: e.canal, post_id: String(e.post_id), publicado_em: e.publicado_em, engajamento: eng, ...m });
+      }
+    } catch { r.falhas++; }
+  }
+  if (itens.length) {
+    try { await banco(comoServico(), "POST", "rpc/radar_metricas_gravar", { p: itens }); r.publicacoes = itens.length; }
+    catch { r.falhas += itens.length; }
+  }
+  return { ...r, versao: VERSAO };
+}
+
 async function tratar(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const inicio = Date.now();                                  // por pedido: dois pedidos ao mesmo tempo não dividem o relógio
@@ -951,12 +1029,12 @@ async function tratar(req: Request): Promise<Response> {
       await conferirAgenda(chaveAgenda);
       quem = "agenda";
       // v0.22.0: e mantém os robôs; v0.29.0: e aciona o robô dos lembretes; v0.45.0: e o robô do site, na hora marcada
-      if (!["publicar", "agenda_teste", "manter_robos", "acionar_lembretes", "acionar_site"].includes(acao)) throw new Erro(403, "A agenda só publica.");
+      if (!["publicar", "agenda_teste", "manter_robos", "acionar_lembretes", "acionar_site", "metricas"].includes(acao)) throw new Erro(403, "A agenda só publica.");
     } else {
       sessao = await quemChamou(req, acao);                   // null = o robô do site (só "publicar" do que foi junto com o site)
       quem = sessao === null ? "robo" : "admin";
     }
-    if (!["publicar", "excluir", "diagnostico", "acionar_robo", "agenda_teste", "manter_robos", "acionar_lembretes", "acionar_site"].includes(acao)) {
+    if (!["publicar", "excluir", "diagnostico", "acionar_robo", "agenda_teste", "manter_robos", "acionar_lembretes", "acionar_site", "metricas"].includes(acao)) {
       throw new Erro(400, "Ação desconhecida.");
     }
     if (quem === "robo" && acao !== "publicar") throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
@@ -974,6 +1052,10 @@ async function tratar(req: Request): Promise<Response> {
     if (acao === "acionar_lembretes") {                       // v0.29.0: só a agenda do banco
       if (quem !== "agenda") throw new Erro(403, "Só a agenda do banco aciona os lembretes.");
       return responder(200, await acionarLembretes());
+    }
+    if (acao === "metricas") {                                // v0.48.0: só a agenda do banco busca as métricas das redes (1x/dia)
+      if (quem !== "agenda") throw new Erro(403, "Só a agenda do banco busca as métricas.");
+      return responder(200, await metricas());
     }
     const envio = Number(pedido?.envio);
     if (!Number.isSafeInteger(envio) || envio <= 0) throw new Erro(400, "Informe a autorização (envio).");
