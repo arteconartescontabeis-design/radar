@@ -401,14 +401,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.142.0"
+    assert pagina.inner_text(".versao") == "v0.143.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.142.0" and data == "28/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.143.0" and data == "28/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -4806,6 +4806,33 @@ def test_trocar_por_outra_do_acervo_no_conteudo_v142(pagina, limpo):
     pagina.wait_for_selector("text=Troquei pela foto")
     depois = limpo.execute("select imagem_id from radar_conteudos where id = %s", (c,)).fetchone()[0]
     assert depois is not None and depois != antes                           # a imagem da publicação foi remontada com a foto do acervo
+
+
+def test_enquadrar_a_foto_da_noticia_v143(pagina, limpo):
+    """v0.143.0: “Enquadrar (mover a foto)” abre a foto da notícia num quadro para mover/dar zoom e, ao aplicar, remonta a capa
+    com o novo recorte — a imagem da publicação muda (a mesma no site, no Instagram e no Facebook)."""
+    a, _ = assunto_com_texto(limpo)
+    c = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por)
+                         values (%s, 'informativo', 'CBS na transição: destaque em 2027', 'Corpo do texto com tamanho suficiente.',
+                                 'em_revisao', 'humano') returning id""", (a,)).fetchone()[0]
+    com_imagem(limpo, c)                                                     # capa inicial (padrão)
+    foto = limpo.execute("insert into radar_imagens (dados, largura, altura) values (%s, 1600, 1200) returning id",
+                        (jpeg_base64((1600, 1200), (120, 80, 40)),)).fetchone()[0]
+    limpo.execute("update radar_assuntos set foto_imagem_id = %s where id = %s", (foto, a))   # a foto da notícia (crua)
+    sel = f"form[data-form=conteudo][data-id='{c}']"
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    antes = limpo.execute("select imagem_id from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    pagina.click(f"{sel} [data-acao=foto-enquadrar]")
+    pagina.wait_for_selector("#enquadrar #enq-quadro")
+    pagina.click('#enquadrar [data-acao=enq-zoom][data-passo="1"]')          # mais zoom
+    pagina.click('#enquadrar [data-acao=enq-mover][data-eixo="y"][data-passo="1"]')   # move para baixo
+    pagina.click("#enquadrar [data-acao=enq-aplicar]")
+    pagina.wait_for_selector("text=Enquadramento aplicado")
+    assert pagina.locator("#enquadrar").count() == 0
+    depois = limpo.execute("select imagem_id from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    assert depois is not None and depois != antes
 
 
 def test_foto_real_em_dois_bancos_mostra_o_selo_e_manda_o_banco_no_baixar(pagina, limpo):

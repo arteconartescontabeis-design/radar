@@ -293,6 +293,14 @@ body.letras-grandes{font-size:18px}
 .capa-previa{width:100%;height:auto;max-height:560px;object-fit:contain;border-radius:6px;display:block;margin:6px 0 12px}   /* v0.25.0: inteira, com o aviso do canto (antes: cortada em 380 px de altura) */
 /* v0.39.0: a janela de escolher a foto real (banco de imagens) */
 .caixa-fotos{width:min(860px,94vw)}
+/* v0.143.0: enquadrar a foto da notícia (arrastar/zoom) */
+.enq-corpo{padding:10px 14px 14px}
+.enq-quadro{position:relative;overflow:hidden;border-radius:8px;border:1px solid var(--linha);background:#011F48;touch-action:none;cursor:grab;margin:6px auto}
+.enq-quadro:active{cursor:grabbing}
+#enq-img{position:absolute;max-width:none;user-select:none;-webkit-user-drag:none;pointer-events:none}
+.enq-botoes{display:flex;gap:18px;align-items:center;flex-wrap:wrap;justify-content:center;margin-top:8px}
+.enq-setas{display:grid;justify-items:center;gap:3px} .enq-setas>div{display:flex;gap:30px}
+.enq-zoom{display:flex;gap:6px;align-items:center}
 .foto-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;max-height:60vh;overflow:auto}
 .acervo-lista{list-style:none;margin:6px 0;padding:0;max-height:300px;overflow:auto}
 .acervo-lista li{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #EEF2F6}
@@ -501,21 +509,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.142.0"></script>
-<script src="radar-video.js?v=0.142.0"></script>
-<script src="radar-setor.js?v=0.142.0"></script>
-<script src="radar-respostas.js?v=0.142.0"></script>
+<script src="radar-pauta.js?v=0.143.0"></script>
+<script src="radar-video.js?v=0.143.0"></script>
+<script src="radar-setor.js?v=0.143.0"></script>
+<script src="radar-respostas.js?v=0.143.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.142.0";
+const VERSAO = "0.143.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.143.0", "28/11/2026", [
+    "<b>Enquadrar a foto da notícia (mover para não cortar)</b>. Na imagem da publicação, o botão <b>“Enquadrar (mover a foto)”</b> abre a foto num quadro e deixa você <b>arrastar</b> (com o dedo no celular ou o mouse), usar as <b>setas ↑↓←→</b> e dar <b>zoom (+/−)</b>, com <b>prévia ao vivo</b>, para posicionar o que importa e <b>não sair cortado</b>. Ao clicar em <b>“Aplicar o enquadramento”</b>, o Radar <b>remonta a capa</b> com o novo recorte (a foto + o título + o logotipo + a identificação legal), e ela vira a imagem da publicação — a mesma no site, no Instagram e no Facebook. “Centralizar” volta ao padrão.",
+    "Administrador: mudança só de TELA. Publique o index.html com os demais .js e aperte Ctrl+F5. Nada muda no banco nem nas funções Edge."]],
   ["0.142.0", "28/11/2026", [
     "<b>Botão “Trocar por outra do acervo” na imagem da notícia</b>. Quando a foto real escolhida <b>não combina</b> com a notícia, agora há um botão, ao lado de “Usar foto real com o título”, que <b>troca na hora por outra foto do acervo da Artecon</b> — com o <b>título redesenhado</b> por cima, no padrão da marca. Cada clique traz uma foto diferente da atual; a escolhida vira a <b>foto da notícia</b> (a mesma no site, no Instagram e no Facebook). Antes, para trocar era preciso abrir a janela de busca; agora é um clique. (Acervo vazio ou com uma só foto: a tela avisa onde enviar mais, em Configurações → “Fotos da Artecon”.)",
     "Administrador: mudança só de TELA. Publique o index.html com os demais .js e aperte Ctrl+F5. Nada muda no banco nem nas funções Edge."]],
@@ -4128,6 +4139,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
       <div class="acoes" style="margin-top:6px"><span class="sub">Ou:</span>
         <button class="btn peq sec" type="button" data-acao="foto-capa" data-id="${c.id}">Usar foto real com o título</button>
         <button class="btn peq sec" type="button" data-acao="foto-outra-acervo" data-id="${c.id}">Trocar por outra do acervo</button>
+        <button class="btn peq sec" type="button" data-acao="foto-enquadrar" data-id="${c.id}">Enquadrar (mover a foto)</button>
         <label class="sub" for="c-img-${c.id}" style="margin:0">enviar uma foto própria</label><input id="c-img-${c.id}" type="file" accept="image/jpeg,image/png,image/webp" data-imagem="${c.id}">
         <button class="btn peq sec" type="button" data-acao="capa-auto" data-id="${c.id}">Usar a capa padrão Artecon (sem imagem)</button>
         ${c.ilustracao_id && !imagemDaIA(c) ? `<button class="btn peq sec" type="button" data-acao="usar-ia" data-id="${c.id}">Usar a imagem da IA de novo</button>` : ""}</div>
@@ -4542,6 +4554,29 @@ const ACOES = {
     E.capaAntiga = null; E.capaFoco = id; await desenhar(); rolarAteConteudo(id);
     recado(outras.length ? `Troquei pela foto ${alvo.nome ? "“" + alvo.nome + "”" : "do acervo"} e redesenhei o título: é a imagem da publicação (a mesma no site, no Instagram e no Facebook) e fica como a foto desta notícia.`
                          : "O acervo tem só esta foto: envie mais em Configurações → “Fotos da Artecon” para poder variar.");
+  },
+  /* v0.143.0: “Enquadrar (mover a foto)” — abre a foto da notícia num quadro 1200×630 para arrastar/dar zoom e não cortar o que
+     importa; ao aplicar, remonta a capa com o novo enquadramento. */
+  async "foto-enquadrar"(el){
+    const f = el.closest("form");
+    if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de enquadrar a imagem.", true); return; }
+    if(f.dataset.aprovado && !confirm("O conteúdo está aprovado: ao mudar a imagem ele volta para revisão. Continuar?")) return;
+    await abrirEnquadrar(Number(el.dataset.id));
+  },
+  async "enq-mover"(el){ const e = E.enquadrar; if(!e) return; e.foco[el.dataset.eixo] += (Number(el.dataset.passo) || 0) * 0.18; e.posicionar(); },
+  async "enq-zoom"(el){ const e = E.enquadrar; if(!e) return; e.foco.zoom += (Number(el.dataset.passo) || 0) * 0.2; e.posicionar(); },
+  async "enq-centralizar"(){ const e = E.enquadrar; if(!e) return; e.foco.x = 0; e.foco.y = 0; e.foco.zoom = 1; e.posicionar(); },
+  async "enq-fechar"(){ $("#enquadrar")?.remove(); E.enquadrar = null; },
+  async "enq-aplicar"(el){
+    const e = E.enquadrar; if(!e) return;
+    const id = Number(el.dataset.id), foco = {...e.foco};
+    const raw = await fotoDaNoticia(E.assunto);
+    $("#enquadrar")?.remove(); E.enquadrar = null;
+    if(!raw?.imagem){ recado("A foto desta notícia não está mais guardada: escolha outra (“Usar foto real” ou “Trocar por outra do acervo”).", true); return; }
+    await capaComFoto(id, raw.imagem, {}, foco);
+    await gravarFotoDaNoticia(E.assunto, raw.imagem, raw.imagem_id || null);   // mantém a foto presa à notícia
+    E.capaAntiga = null; E.capaFoco = id; await desenhar(); rolarAteConteudo(id);
+    recado("Enquadramento aplicado: a imagem da publicação foi remontada com o novo recorte — a mesma no site, no Instagram e no Facebook.");
   },
   async "foto-fechar"(){ $("#foto-escolha")?.remove(); E.fotoEscolha = null; },
   async "foto-buscar-modal"(){ await buscarFotosModal(); },
@@ -5715,16 +5750,20 @@ async function desenharCapa(titulo, rotulo){
 /* v0.39.0: capa com FOTO REAL (banco de imagens) ao fundo e o título curto por cima, no padrão da marca: a foto coberta, uma sombra
    escura embaixo para o texto ler em qualquer foto, a faixa tricolor, o logotipo, a categoria e o título em até 3 linhas. Sai 1200×630,
    como a capa padrão: o lembrete de refazer a capa quando o título muda vale para ela também. */
-async function desenharCapaFoto(foto, titulo, rotulo){
+async function desenharCapaFoto(foto, titulo, rotulo, foco){
   const img = await carregarImagem(foto);
   if(!img.naturalWidth || !img.naturalHeight) throw new ErroApi("Não foi possível ler a foto escolhida.");
   const L = 1200, A = 630, cv = document.createElement("canvas"); cv.width = L; cv.height = A;
   const cx = cv.getContext("2d");
   try{ await Promise.race([document.fonts.load('700 56px "Playfair Display"'), new Promise(ok => setTimeout(ok, 1500))]); }catch(e){}
   const caixa = (x, y, w, a, r) => { cx.beginPath(); cx.roundRect ? cx.roundRect(x, y, w, a, r) : cx.rect(x, y, w, a); cx.fill(); };
-  const f = Math.max(L / img.naturalWidth, A / img.naturalHeight);
+  // v0.143.0: o ENQUADRAMENTO (foco) — zoom (1 a 2,5) e o deslocamento x/y (−1 a 1, fração da sobra); sem foco, segue centralizado
+  const zoom = Math.max(1, Math.min(2.5, Number(foco?.zoom) || 1));
+  const f = Math.max(L / img.naturalWidth, A / img.naturalHeight) * zoom;
+  const dw = img.naturalWidth * f, dh = img.naturalHeight * f;
+  const fx = Math.max(-1, Math.min(1, Number(foco?.x) || 0)), fy = Math.max(-1, Math.min(1, Number(foco?.y) || 0));
   cx.fillStyle = "#011F48"; cx.fillRect(0, 0, L, A);
-  cx.drawImage(img, (L - img.naturalWidth * f) / 2, (A - img.naturalHeight * f) / 2, img.naturalWidth * f, img.naturalHeight * f);
+  cx.drawImage(img, (L - dw) / 2 + fx * Math.max(0, (dw - L) / 2), (A - dh) / 2 + fy * Math.max(0, (dh - A) / 2), dw, dh);
   const sombra = cx.createLinearGradient(0, A * .30, 0, A);
   sombra.addColorStop(0, "rgba(1,21,45,0)"); sombra.addColorStop(.55, "rgba(1,21,45,.62)"); sombra.addColorStop(1, "rgba(1,21,45,.94)");
   cx.fillStyle = sombra; cx.fillRect(0, 0, L, A);
@@ -5762,12 +5801,65 @@ async function desenharCapaFoto(foto, titulo, rotulo){
   return {dados, largura:L, altura:A};
 }
 /* v0.39.0: a capa com a foto real vira a imagem da publicação (a foto crua não fica guardada: só a capa 1200×630) */
-async function capaComFoto(conteudoId, foto, extra = {}){
+async function capaComFoto(conteudoId, foto, extra = {}, foco = null){
   const [c] = await ler("radar_conteudos", {select:"titulo,radar_assuntos(categoria)", id:"eq." + conteudoId});
   if(!c) throw new ErroApi("O conteúdo não existe mais.");
-  const capa = await desenharCapaFoto(foto, c.titulo, catMapa()[c.radar_assuntos?.categoria] || "Artecon Informa");
+  const capa = await desenharCapaFoto(foto, c.titulo, catMapa()[c.radar_assuntos?.categoria] || "Artecon Informa", foco);
   const [nova] = await rest("POST", "radar_imagens", {corpo:capa, params:{select:"id"}, prefer:"return=representation"});
   await alterar("radar_conteudos", {id:"eq." + conteudoId, select:"id"}, {imagem_id:nova.id, ...extra});
+}
+/* v0.143.0: ENQUADRAR — abre a foto da notícia (a crua, presa ao assunto) num quadro 1200×630 para arrastar (dedo/mouse), usar as
+   setas e dar zoom, com prévia ao vivo. O enquadramento é o foco {x,y,zoom}; ao aplicar (enq-aplicar), a capa é remontada com ele. */
+async function abrirEnquadrar(conteudoId){
+  const raw = await fotoDaNoticia(E.assunto);
+  if(!raw?.imagem){ recado("Escolha primeiro uma foto real (“Usar foto real com o título” ou “Trocar por outra do acervo”) para poder enquadrar.", true); return; }
+  let img;
+  try{ img = await carregarImagem(raw.imagem); }catch(e){ recado("Não foi possível abrir a foto para enquadrar.", true); return; }
+  if(!img.naturalWidth || !img.naturalHeight){ recado("Não foi possível abrir a foto para enquadrar.", true); return; }
+  $("#enquadrar")?.remove();
+  const L = 1200, A = 630, DISP = Math.max(280, Math.min(560, (window.innerWidth || 560) - 48)), s = DISP / L, foco = {x:0, y:0, zoom:1};
+  document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="enquadrar"><div class="caixa-previa" role="dialog" aria-modal="true" aria-label="Enquadrar a foto">
+    <div class="barra-previa"><span>Enquadrar a foto — mova e dê zoom para não cortar o que importa</span><button class="btn peq sec" type="button" data-acao="enq-fechar">Fechar</button></div>
+    <div class="enq-corpo">
+      <div class="enq-quadro" id="enq-quadro" style="width:${DISP}px;height:${Math.round(A * s)}px"><img id="enq-img" alt="Foto da notícia" draggable="false" src="${h(raw.imagem)}"></div>
+      <p class="sub">Arraste a foto (ou use as setas) e dê zoom. O título, o logotipo e a identificação legal entram por cima ao aplicar.</p>
+      <div class="enq-botoes">
+        <div class="enq-setas">
+          <button class="btn peq sec" type="button" data-acao="enq-mover" data-eixo="y" data-passo="-1" aria-label="Mover a foto para cima">↑</button>
+          <div><button class="btn peq sec" type="button" data-acao="enq-mover" data-eixo="x" data-passo="-1" aria-label="Mover a foto para a esquerda">←</button>
+            <button class="btn peq sec" type="button" data-acao="enq-mover" data-eixo="x" data-passo="1" aria-label="Mover a foto para a direita">→</button></div>
+          <button class="btn peq sec" type="button" data-acao="enq-mover" data-eixo="y" data-passo="1" aria-label="Mover a foto para baixo">↓</button>
+        </div>
+        <div class="enq-zoom"><button class="btn peq sec" type="button" data-acao="enq-zoom" data-passo="-1" aria-label="Menos zoom">−</button>
+          <span class="sub">zoom</span>
+          <button class="btn peq sec" type="button" data-acao="enq-zoom" data-passo="1" aria-label="Mais zoom">+</button></div>
+        <button class="btn peq sec" type="button" data-acao="enq-centralizar">Centralizar</button>
+      </div>
+      <div class="acoes" style="justify-content:flex-end;margin-top:8px">
+        <button class="btn peq" type="button" data-acao="enq-aplicar" data-id="${conteudoId}">Aplicar o enquadramento</button></div>
+    </div></div></div>`);
+  const el = $("#enq-img");
+  const posicionar = () => {
+    foco.zoom = Math.max(1, Math.min(2.5, foco.zoom));
+    const f = Math.max(L / img.naturalWidth, A / img.naturalHeight) * foco.zoom;
+    const dw = img.naturalWidth * f, dh = img.naturalHeight * f;
+    const ox = Math.max(0, (dw - L) / 2), oy = Math.max(0, (dh - A) / 2);
+    foco.x = Math.max(-1, Math.min(1, foco.x)); foco.y = Math.max(-1, Math.min(1, foco.y));
+    el.style.width = (dw * s) + "px"; el.style.height = (dh * s) + "px";
+    el.style.left = (((L - dw) / 2 + foco.x * ox) * s) + "px"; el.style.top = (((A - dh) / 2 + foco.y * oy) * s) + "px";
+    el.dataset.ox = ox; el.dataset.oy = oy;
+  };
+  E.enquadrar = {foco, posicionar};
+  posicionar();
+  const quadro = $("#enq-quadro");
+  let arrasto = null;
+  quadro.addEventListener("pointerdown", (ev) => { arrasto = {px:ev.clientX, py:ev.clientY, fx:foco.x, fy:foco.y, ox:Number(el.dataset.ox) || 0, oy:Number(el.dataset.oy) || 0}; try{ quadro.setPointerCapture(ev.pointerId); }catch(e){} });
+  quadro.addEventListener("pointermove", (ev) => { if(!arrasto) return;
+    if(arrasto.ox > 0) foco.x = arrasto.fx + ((ev.clientX - arrasto.px) / s) / arrasto.ox;
+    if(arrasto.oy > 0) foco.y = arrasto.fy + ((ev.clientY - arrasto.py) / s) / arrasto.oy;
+    posicionar(); });
+  const soltar = () => { arrasto = null; };
+  quadro.addEventListener("pointerup", soltar); quadro.addEventListener("pointercancel", soltar);
 }
 /* v0.39.0: as palavras de busca da foto, tiradas do título (sem artigos e preposições) */
 const PALAVRAS_VAZIAS = new Set(("a o as os um uma uns umas de do da dos das em no na nos nas por pelo pela para com sem sob sobre " +
