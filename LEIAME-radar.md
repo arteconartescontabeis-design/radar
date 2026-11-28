@@ -1,4 +1,4 @@
-# Radar Artecon — v0.141.0
+# Radar Artecon — v0.142.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 

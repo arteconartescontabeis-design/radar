@@ -501,21 +501,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.141.0"></script>
-<script src="radar-video.js?v=0.141.0"></script>
-<script src="radar-setor.js?v=0.141.0"></script>
-<script src="radar-respostas.js?v=0.141.0"></script>
+<script src="radar-pauta.js?v=0.142.0"></script>
+<script src="radar-video.js?v=0.142.0"></script>
+<script src="radar-setor.js?v=0.142.0"></script>
+<script src="radar-respostas.js?v=0.142.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.141.0";
+const VERSAO = "0.142.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.142.0", "28/11/2026", [
+    "<b>Botão “Trocar por outra do acervo” na imagem da notícia</b>. Quando a foto real escolhida <b>não combina</b> com a notícia, agora há um botão, ao lado de “Usar foto real com o título”, que <b>troca na hora por outra foto do acervo da Artecon</b> — com o <b>título redesenhado</b> por cima, no padrão da marca. Cada clique traz uma foto diferente da atual; a escolhida vira a <b>foto da notícia</b> (a mesma no site, no Instagram e no Facebook). Antes, para trocar era preciso abrir a janela de busca; agora é um clique. (Acervo vazio ou com uma só foto: a tela avisa onde enviar mais, em Configurações → “Fotos da Artecon”.)",
+    "Administrador: mudança só de TELA. Publique o index.html com os demais .js e aperte Ctrl+F5. Nada muda no banco nem nas funções Edge."]],
   ["0.141.0", "27/11/2026", [
     "<b>Acompanhamento de crescimento: seguidores no Painel e curtidas/visualizações nas Publicações</b>. O Radar passa a ler sozinho, <b>uma vez por dia</b>, direto da Meta (só leitura): o <b>número de seguidores</b> do Instagram e do Facebook e o <b>engajamento de cada publicação</b> (curtidas, comentários, visualizações, alcance, salvamentos e compartilhamentos). No <b>Painel do dia</b>, um quadro novo <b>“Crescimento de seguidores”</b> mostra o total atual de cada rede e a variação no período, com uma linha do tempo. Na aba <b>Publicações</b>, cada peça/notícia que já saiu nas redes mostra embaixo, na coluna do canal, <b>“N visualizações · N curtidas · N comentários”</b>. Com os mesmos dados, o Painel ganha de brinde os <b>melhores horários por engajamento</b> (as publicações próprias agora alimentam esse quadro).",
     "Administrador: mudança na TELA, no BANCO e na função radar-redes. 1) No Supabase (SQL Editor) rode o <b>sql/radar-redes-metricas-v0.141.0.sql</b> (tabelas radar_redes_seguidores e radar_metricas, com visualizações; nada é apagado de dados reais; pode rodar de novo) e depois o <b>sql/radar-redes-agenda.sql</b> (agenda a leitura diária das métricas). 2) Faça o Deploy da <b>radar-redes</b> (cole de novo o supabase/functions/radar-redes/index.ts — v0.49.0) e da <b>radar-copia</b> (v0.141.0 — a cópia de segurança passa a incluir o crescimento de seguidores). 3) Publique o index.html com os demais .js e aperte Ctrl+F5. Os quadros aparecem com dados a partir da primeira leitura automática (no dia seguinte)."]],
@@ -4124,6 +4127,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
       <p class="sub imagem-ajuda" style="margin:4px 0 0">A IA cria uma imagem com aparência de foto, com pessoas fictícias (nunca alguém real), sem texto, marca nem assinatura. Em branco, ela escolhe a cena pela notícia. A imagem sai inteira, sem título por cima, com o aviso “${AVISO_IA}” pequeno no canto (preço fixo por imagem, na IA Central); no site e na legenda das redes vai também a linha “${LINHA_AVISO_IA}”. Foto real de alguém da equipe, só com a foto tirada e o termo de uso de imagem assinado.</p>
       <div class="acoes" style="margin-top:6px"><span class="sub">Ou:</span>
         <button class="btn peq sec" type="button" data-acao="foto-capa" data-id="${c.id}">Usar foto real com o título</button>
+        <button class="btn peq sec" type="button" data-acao="foto-outra-acervo" data-id="${c.id}">Trocar por outra do acervo</button>
         <label class="sub" for="c-img-${c.id}" style="margin:0">enviar uma foto própria</label><input id="c-img-${c.id}" type="file" accept="image/jpeg,image/png,image/webp" data-imagem="${c.id}">
         <button class="btn peq sec" type="button" data-acao="capa-auto" data-id="${c.id}">Usar a capa padrão Artecon (sem imagem)</button>
         ${c.ilustracao_id && !imagemDaIA(c) ? `<button class="btn peq sec" type="button" data-acao="usar-ia" data-id="${c.id}">Usar a imagem da IA de novo</button>` : ""}</div>
@@ -4513,6 +4517,31 @@ const ACOES = {
     await abrirEscolhaFoto(buscaDaFoto(c.titulo) || c.titulo.slice(0, 60),
       async (fotoId, banco) => { const r = await ia("foto_baixar", {foto_id:fotoId, banco}); await usar(r.imagem, "real"); },
       async (dados, imagemId) => usar(dados, "da Artecon", imagemId));   // v0.63.0: a foto do acervo, sem ir ao banco de imagens
+  },
+  /* v0.142.0: “Trocar por outra do acervo” — um clique troca a foto da notícia por OUTRA foto do acervo da Artecon (diferente da
+     atual), com o título redesenhado; vira a foto da notícia (site, Instagram e Facebook). Acervo vazio ou só com a atual: avisa. */
+  async "foto-outra-acervo"(el){
+    const f = el.closest("form");
+    if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de trocar a imagem.", true); return; }
+    if(f.dataset.aprovado && !confirm("O conteúdo está aprovado: ao trocar a imagem ele volta para revisão. Continuar?")) return;
+    const id = Number(el.dataset.id);
+    const [c] = await ler("radar_conteudos", {select:"titulo", id:"eq." + id});
+    if(!c){ await desenhar(); recado("Este conteúdo não existe mais: a tela foi atualizada.", "aviso"); return; }
+    const lista = (await listaAcervo()) || [];
+    if(!lista.length){ recado("O acervo de fotos da Artecon está vazio. Envie fotos em Configurações → “Fotos da Artecon”, ou use “Usar foto real com o título” para buscar no banco de imagens.", true); return; }
+    let atualId = null;
+    try{ const r = await rpc("radar_assunto_foto", {p_assunto:E.assunto}); atualId = r?.imagem_id || null; }catch(e){ /* banco antigo: sem a foto presa */ }
+    const outras = lista.filter(x => x.imagem_id !== atualId);
+    const fonte = outras.length ? outras : lista;
+    const alvo = fonte[Math.floor(Math.random() * fonte.length)];
+    const [img] = await ler("radar_imagens", {select:"dados", id:"eq." + alvo.imagem_id});
+    if(!/^data:image\/(jpeg|png|webp);base64,/.test(img?.dados || "")){ await desenhar(); recado("Esta foto não está mais no acervo: atualize a página.", true); return; }
+    const extra = f.dataset.iaAntiga ? await iaAntigaEm3x2(id) : {};
+    await capaComFoto(id, img.dados, extra);
+    await gravarFotoDaNoticia(E.assunto, img.dados, alvo.imagem_id);
+    E.capaAntiga = null; E.capaFoco = id; await desenhar(); rolarAteConteudo(id);
+    recado(outras.length ? `Troquei pela foto ${alvo.nome ? "“" + alvo.nome + "”" : "do acervo"} e redesenhei o título: é a imagem da publicação (a mesma no site, no Instagram e no Facebook) e fica como a foto desta notícia.`
+                         : "O acervo tem só esta foto: envie mais em Configurações → “Fotos da Artecon” para poder variar.");
   },
   async "foto-fechar"(){ $("#foto-escolha")?.remove(); E.fotoEscolha = null; },
   async "foto-buscar-modal"(){ await buscarFotosModal(); },
